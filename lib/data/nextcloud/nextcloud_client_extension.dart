@@ -40,11 +40,13 @@ extension NextcloudClientExtension on NextcloudClient {
     if (!stows.loggedIn) return null;
 
     final url = stows.url.value;
+    // Never fall back to the official Saber server
+    if (url.isEmpty) return null;
     final username = stows.username.value;
     final ncPassword = stows.ncPassword.value;
 
     final client = NextcloudClient(
-      url.isNotEmpty ? Uri.parse(url) : defaultNextcloudUri,
+      Uri.parse(url),
       loginName: username,
       password: ncPassword,
       appPassword: ncPassword,

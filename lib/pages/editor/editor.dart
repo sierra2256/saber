@@ -23,7 +23,6 @@ import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
 import 'package:saber/components/editor/read_only_banner.dart';
 import 'package:saber/components/theming/adaptive_alert_dialog.dart';
-import 'package:saber/components/theming/adaptive_icon.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/components/theming/saber_theme.dart';
 import 'package:saber/components/toolbar/color_bar.dart';
@@ -1027,6 +1026,29 @@ class EditorState extends State<Editor> {
     }
   }
 
+  void showRenameDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(t.home.renameNote.renameNote),
+        content: TextFormField(
+          controller: filenameTextEditingController,
+          decoration: InputDecoration(labelText: t.home.renameNote.noteName),
+          autofocus: true,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          validator: _validateFilenameTextField,
+          onFieldSubmitted: (_) => Navigator.of(context).pop(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(t.home.renameNote.rename),
+          ),
+        ],
+      ),
+    ).then((_) => _renameFileNow());
+  }
+
   String? _validateFilenameTextField(String? newName) {
     if (newName == null) return null;
     return FileManager.validateFilename(newName);
@@ -1409,6 +1431,11 @@ class EditorState extends State<Editor> {
           : null,
     );
 
+    // The title only fits next to the tools on wide screens (e.g. landscape
+    // tablets); otherwise it can be renamed from the overflow menu.
+    final showTitleInToolbar =
+        !isToolbarVertical && MediaQuery.sizeOf(context).width >= 1000;
+
     final Widget toolbar = Collapsible(
       axis: isToolbarVertical
           ? CollapsibleAxis.horizontal
@@ -1582,41 +1609,116 @@ class EditorState extends State<Editor> {
           exportAsSba: exportAsSba,
           exportAsPdf: exportAsPdf,
           exportAsPng: exportAsPng,
+          // Like GoodNotes, there is no separate app bar: the back button
+          // and title live in the toolbar to leave more room for the page.
+          leading: Row(
+            mainAxisSize: .min,
+            children: [
+              SaveIndicator(savingState: savingState, triggerSave: saveToFile),
+              if (showTitleInToolbar)
+                SizedBox(
+                  width: 180,
+                  child: widget.customTitle != null
+                      ? Text(widget.customTitle!)
+                      : Form(
+                          key: _filenameFormKey,
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
+                          child: TextFormField(
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: .symmetric(
+                                horizontal: 4,
+                                vertical: 8,
+                              ),
+                            ),
+                            style: TextTheme.of(context).titleMedium,
+                            controller: filenameTextEditingController,
+                            onChanged: renameFile,
+                            autofocus: needsNaming,
+                            validator: _validateFilenameTextField,
+                          ),
+                        ),
+                ),
+            ],
+          ),
+          rename: showTitleInToolbar || widget.customTitle != null
+              ? null
+              : showRenameDialog,
+          insertPage: () => setState(() {
+            final currentPageIndex = this.currentPageIndex;
+            insertPageAfter(currentPageIndex);
+            CanvasGestureDetector.scrollToPage(
+              pageIndex: currentPageIndex + 1,
+              pages: coreInfo.pages,
+              screenWidth: MediaQuery.sizeOf(context).width,
+              transformationController: _transformationController,
+            );
+          }),
+          showPages: () {
+            showDialog(
+              context: context,
+              builder: (context) => AdaptiveAlertDialog(
+                title: Text(t.editor.pages),
+                content: pageManager(context),
+                actions: const [],
+              ),
+            );
+          },
+          showNoteSettings: () {
+            showModalBottomSheet(
+              context: context,
+              builder: (context) => bottomSheet(context),
+              isScrollControlled: true,
+              showDragHandle: true,
+              backgroundColor: colorScheme.surface,
+              constraints: const BoxConstraints(maxWidth: 500),
+            );
+          },
         ),
       ),
     );
 
-    final Widget body;
-    if (isToolbarVertical) {
-      body = Row(
-        textDirection: stows.editorToolbarAlignment.value == AxisDirection.left
-            ? .ltr
-            : .rtl,
-        children: [
-          toolbar,
-          Expanded(
-            child: Column(
-              children: [
-                Expanded(child: canvas),
-                readonlyBanner,
-              ],
-            ),
+    // The toolbar floats over the canvas so the page stays visible
+    // around (and scrolls underneath) the toolbar, like GoodNotes.
+    final Widget body = Column(
+      children: [
+        Expanded(
+          child: Stack(
+            children: [
+              Positioned.fill(child: canvas),
+              switch (stows.editorToolbarAlignment.value) {
+                AxisDirection.up => Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: toolbar,
+                ),
+                AxisDirection.down => Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: toolbar,
+                ),
+                AxisDirection.left => Positioned(
+                  top: 0,
+                  bottom: 0,
+                  left: 0,
+                  child: toolbar,
+                ),
+                AxisDirection.right => Positioned(
+                  top: 0,
+                  bottom: 0,
+                  right: 0,
+                  child: toolbar,
+                ),
+              },
+            ],
           ),
-        ],
-      );
-    } else {
-      body = Column(
-        verticalDirection:
-            stows.editorToolbarAlignment.value == AxisDirection.up
-            ? VerticalDirection.up
-            : VerticalDirection.down,
-        children: [
-          Expanded(child: canvas),
-          toolbar,
-          readonlyBanner,
-        ],
-      );
-    }
+        ),
+        readonlyBanner,
+      ],
+    );
 
     return ValueListenableBuilder(
       valueListenable: savingState,
@@ -1641,83 +1743,12 @@ class EditorState extends State<Editor> {
         );
       },
       child: Scaffold(
-        appBar: DynamicMaterialApp.isFullscreen
-            ? null
-            : AppBar(
-                toolbarHeight: kToolbarHeight,
-                title: widget.customTitle != null
-                    ? Text(widget.customTitle!)
-                    : Form(
-                        key: _filenameFormKey,
-                        autovalidateMode: AutovalidateMode.onUserInteraction,
-                        child: TextFormField(
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                          ),
-                          controller: filenameTextEditingController,
-                          onChanged: renameFile,
-                          autofocus: needsNaming,
-                          validator: _validateFilenameTextField,
-                        ),
-                      ),
-                leading: SaveIndicator(
-                  savingState: savingState,
-                  triggerSave: saveToFile,
-                ),
-                actions: [
-                  IconButton(
-                    icon: const AdaptiveIcon(
-                      icon: Icons.insert_page_break,
-                      cupertinoIcon: CupertinoIcons.add,
-                    ),
-                    tooltip: t.editor.menu.insertPage,
-                    onPressed: () => setState(() {
-                      final currentPageIndex = this.currentPageIndex;
-                      insertPageAfter(currentPageIndex);
-                      CanvasGestureDetector.scrollToPage(
-                        pageIndex: currentPageIndex + 1,
-                        pages: coreInfo.pages,
-                        screenWidth: MediaQuery.sizeOf(context).width,
-                        transformationController: _transformationController,
-                      );
-                    }),
-                  ),
-                  IconButton(
-                    icon: const AdaptiveIcon(
-                      icon: Icons.grid_view,
-                      cupertinoIcon: CupertinoIcons.rectangle_grid_2x2,
-                    ),
-                    tooltip: t.editor.pages,
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => AdaptiveAlertDialog(
-                          title: Text(t.editor.pages),
-                          content: pageManager(context),
-                          actions: const [],
-                        ),
-                      );
-                    },
-                  ),
-                  IconButton(
-                    icon: const AdaptiveIcon(
-                      icon: Icons.more_vert,
-                      cupertinoIcon: CupertinoIcons.ellipsis_vertical,
-                    ),
-                    onPressed: () {
-                      showModalBottomSheet(
-                        context: context,
-                        builder: (context) => bottomSheet(context),
-                        isScrollControlled: true,
-                        showDragHandle: true,
-                        backgroundColor: colorScheme.surface,
-                        constraints: const BoxConstraints(maxWidth: 500),
-                      );
-                    },
-                  ),
-                ],
-              ),
-        body: body,
+        body: AnnotatedRegion(
+          value: Theme.brightnessOf(context) == .dark
+              ? SystemUiOverlayStyle.light
+              : SystemUiOverlayStyle.dark,
+          child: body,
+        ),
         floatingActionButton:
             (DynamicMaterialApp.isFullscreen &&
                 !stows.editorToolbarShowInFullscreen.value)
