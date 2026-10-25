@@ -306,6 +306,22 @@ class Stows {
         Colors.black.toARGB32(),
         volatile: !_isOnMainIsolate,
       );
+
+  /// Custom stroke width presets for the inline width dots in the toolbar,
+  /// keyed by [WidthPresets.keyOf]. Tool types without an entry
+  /// use [WidthPresets.defaults].
+  final widthPresets = PlainStow.json(
+    'widthPresets',
+    const <String, List<double>>{},
+    fromJson: _widthPresetsFromJson,
+    volatile: !_isOnMainIsolate,
+  );
+  static Map<String, List<double>> _widthPresetsFromJson(Object json) => {
+    for (final MapEntry(:key, :value) in (json as Map).entries)
+      key as String: [
+        for (final size in value as List) (size as num).toDouble(),
+      ],
+  };
   final lastBackgroundPattern = PlainStow(
     'lastBackgroundPattern',
     CanvasBackgroundPattern.none,
