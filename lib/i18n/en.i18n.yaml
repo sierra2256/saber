@@ -294,6 +294,11 @@ editor:
     laserPointer: Laser pointer
   penOptions:
     size: Size
+  favoritePens:
+    add: Add to favorite pens
+    replace: Replace with current pen
+    remove: Remove
+    title: Favorite pen
   eraserOptions:
     wholeStroke: Erasing whole strokes (tap to erase partially)
     partial: Erasing partially (tap to erase whole strokes)

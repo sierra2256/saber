@@ -13,6 +13,7 @@ import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/components/theming/uni_icon.dart';
 import 'package:saber/components/toolbar/color_bar.dart';
 import 'package:saber/components/toolbar/export_bar.dart';
+import 'package:saber/components/toolbar/favorite_pens.dart';
 import 'package:saber/components/toolbar/floating_panel.dart';
 import 'package:saber/components/toolbar/pen_modal.dart';
 import 'package:saber/components/toolbar/quick_options.dart';
@@ -539,6 +540,21 @@ class _ToolbarState extends State<Toolbar> {
                         onChanged: () => setState(() {}),
                       ),
                   ],
+                ),
+              ],
+              if (!widget.readOnly &&
+                  (widget.currentTool is Pen ||
+                      stows.favoritePens.value.isNotEmpty)) ...[
+                _ToolbarDivider(axis: toolbarAxis),
+                FavoritePens(
+                  axis: toolbarAxis,
+                  currentTool: widget.currentTool,
+                  setTool: (tool) {
+                    toolOptionsType.value = .hide;
+                    widget.setTool(tool);
+                  },
+                  invert: invert,
+                  padding: buttonPadding,
                 ),
               ],
               if (widget.currentTool is Eraser && !widget.readOnly) ...[

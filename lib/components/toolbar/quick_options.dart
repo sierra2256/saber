@@ -60,7 +60,7 @@ class QuickColors extends StatelessWidget {
       mainAxisSize: .min,
       children: [
         for (final color in colors)
-          _QuickOption(
+          QuickOption(
             tooltip: ColorBar.findColorName(color),
             selected: selectedArgb == color.toARGB32(),
             onTap: () => setColor(color),
@@ -114,7 +114,7 @@ class QuickSizes extends StatelessWidget {
             builder: (context) {
               final size = presets[i];
               final selected = pen.options.size == size;
-              return _QuickOption(
+              return QuickOption(
                 tooltip: '${t.editor.penOptions.size}: ${size.round()}',
                 selected: selected,
                 onTap: () {
@@ -174,7 +174,7 @@ class QuickEraserOptions extends StatelessWidget {
             builder: (context) {
               final size = Eraser.sizePresets[i];
               final selected = currentSize == size;
-              return _QuickOption(
+              return QuickOption(
                 tooltip: '${t.editor.penOptions.size}: ${size.round()}',
                 selected: selected,
                 onTap: () {
@@ -202,7 +202,7 @@ class QuickEraserOptions extends StatelessWidget {
               );
             },
           ),
-        _QuickOption(
+        QuickOption(
           tooltip: partial
               ? t.editor.eraserOptions.partial
               : t.editor.eraserOptions.wholeStroke,
@@ -217,7 +217,7 @@ class QuickEraserOptions extends StatelessWidget {
             color: partial ? colorScheme.primary : colorScheme.onSurfaceVariant,
           ),
         ),
-        _QuickOption(
+        QuickOption(
           tooltip: t.editor.eraserOptions.highlighterOnly,
           selected: highlighterOnly,
           onTap: () {
@@ -286,8 +286,10 @@ abstract final class WidthPresets {
   }
 }
 
-class _QuickOption extends StatelessWidget {
+/// A small round button used for the inline toolbar options.
+class QuickOption extends StatelessWidget {
   const new({
+    super.key,
     required this.tooltip,
     required this.selected,
     required this.onTap,

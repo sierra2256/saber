@@ -12,6 +12,7 @@ import 'package:saber/data/codecs/base64_codec.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/quota.dart';
 import 'package:saber/data/sentry/sentry_consent.dart';
+import 'package:saber/data/tools/favorite_pen.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:sbn/canvas_background_pattern.dart';
@@ -344,6 +345,19 @@ class Stows {
         for (final size in value as List) (size as num).toDouble(),
       ],
   };
+
+  /// Saved tool + color + width combinations, shown in the toolbar.
+  final favoritePens = PlainStow.json(
+    'favoritePens',
+    const <FavoritePen>[],
+    fromJson: _favoritePensFromJson,
+    volatile: !_isOnMainIsolate,
+  );
+  static List<FavoritePen> _favoritePensFromJson(Object json) => [
+    for (final pen in json as List)
+      FavoritePen.fromJson(Map<String, dynamic>.from(pen as Map)),
+  ];
+
   final lastBackgroundPattern = PlainStow(
     'lastBackgroundPattern',
     CanvasBackgroundPattern.none,

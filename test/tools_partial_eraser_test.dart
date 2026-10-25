@@ -182,6 +182,5 @@ Stroke _horizontalLine(
   double to, {
   double y = 50,
   ToolId toolId = .fountainPen,
-}) => _stroke([
-  for (var x = from; x <= to; x += 1) Offset(x, y),
-], toolId: toolId);
+}) =>
+    _stroke([for (var x = from; x <= to; x += 1) Offset(x, y)], toolId: toolId);

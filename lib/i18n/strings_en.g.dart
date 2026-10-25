@@ -312,6 +312,7 @@ class Translations$editor$en {
 	late final Translations$editor$toolbar$en toolbar = Translations$editor$toolbar$en.internal(_root);
 	late final Translations$editor$pens$en pens = Translations$editor$pens$en.internal(_root);
 	late final Translations$editor$penOptions$en penOptions = Translations$editor$penOptions$en.internal(_root);
+	late final Translations$editor$favoritePens$en favoritePens = Translations$editor$favoritePens$en.internal(_root);
 	late final Translations$editor$eraserOptions$en eraserOptions = Translations$editor$eraserOptions$en.internal(_root);
 	late final Translations$editor$colors$en colors = Translations$editor$colors$en.internal(_root);
 	late final Translations$editor$imageOptions$en imageOptions = Translations$editor$imageOptions$en.internal(_root);
@@ -1135,6 +1136,27 @@ class Translations$editor$penOptions$en {
 
 	/// en: 'Size'
 	String get size => 'Size';
+}
+
+// Path: editor.favoritePens
+class Translations$editor$favoritePens$en {
+	Translations$editor$favoritePens$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Add to favorite pens'
+	String get add => 'Add to favorite pens';
+
+	/// en: 'Replace with current pen'
+	String get replace => 'Replace with current pen';
+
+	/// en: 'Remove'
+	String get remove => 'Remove';
+
+	/// en: 'Favorite pen'
+	String get title => 'Favorite pen';
 }
 
 // Path: editor.eraserOptions
