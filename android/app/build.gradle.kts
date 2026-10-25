@@ -35,6 +35,10 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Install alongside the official Saber app instead of replacing it
+        applicationIdSuffix = ".custom"
+        manifestPlaceholders["appLabel"] = "Saber Custom"
     }
 
     signingConfigs {
