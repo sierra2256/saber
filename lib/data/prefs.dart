@@ -12,6 +12,7 @@ import 'package:saber/data/codecs/base64_codec.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/quota.dart';
 import 'package:saber/data/sentry/sentry_consent.dart';
+import 'package:saber/data/tools/favorite_pen.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:sbn/canvas_background_pattern.dart';
@@ -195,6 +196,36 @@ class Stows {
     false,
     volatile: !_isOnMainIsolate,
   );
+
+  /// The eraser radius, see [Eraser.sizePresets].
+  final eraserSize = PlainStow<double>(
+    'eraserSize',
+    10,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Whether the eraser only erases the touched part of a stroke,
+  /// instead of the whole stroke.
+  final eraserPartial = PlainStow(
+    'eraserPartial',
+    false,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Whether the eraser only erases highlighter strokes.
+  final eraserHighlighterOnly = PlainStow(
+    'eraserHighlighterOnly',
+    false,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// What holding the stylus side button (e.g. the S Pen button) does.
+  final stylusButtonAction = PlainStow(
+    'stylusButtonAction',
+    StylusButtonAction.eraser,
+    codec: const EnumCodec(StylusButtonAction.values),
+    volatile: !_isOnMainIsolate,
+  );
   final hideFingerDrawingToggle = PlainStow(
     'hideFingerDrawingToggle',
     false,
@@ -298,6 +329,43 @@ class Stows {
         Colors.black.toARGB32(),
         volatile: !_isOnMainIsolate,
       );
+
+  /// Custom stroke width presets for the inline width dots in the toolbar,
+  /// keyed by [WidthPresets.keyOf]. Tool types without an entry
+  /// use [WidthPresets.defaults].
+  final widthPresets = PlainStow.json(
+    'widthPresets',
+    const <String, List<double>>{},
+    fromJson: _widthPresetsFromJson,
+    volatile: !_isOnMainIsolate,
+  );
+  static Map<String, List<double>> _widthPresetsFromJson(Object json) => {
+    for (final MapEntry(:key, :value) in (json as Map).entries)
+      key as String: [
+        for (final size in value as List) (size as num).toDouble(),
+      ],
+  };
+
+  /// Saved tool + color + width combinations, shown in the toolbar.
+  final favoritePens = PlainStow.json(
+    'favoritePens',
+    const <FavoritePen>[],
+    fromJson: _favoritePensFromJson,
+    volatile: !_isOnMainIsolate,
+  );
+  static List<FavoritePen> _favoritePensFromJson(Object json) => [
+    for (final pen in json as List)
+      FavoritePen.fromJson(Map<String, dynamic>.from(pen as Map)),
+  ];
+
+  /// Saved lasso selections that can be inserted into any note,
+  /// encoded with [CanvasElement.encode].
+  final savedElements = PlainStow(
+    'savedElements',
+    <String>[],
+    volatile: !_isOnMainIsolate,
+  );
+
   final lastBackgroundPattern = PlainStow(
     'lastBackgroundPattern',
     CanvasBackgroundPattern.none,
@@ -406,6 +474,21 @@ class Stows {
   @pragma('vm:platform-const')
   static final isDesktop =
       Platform.isLinux || Platform.isWindows || Platform.isMacOS;
+}
+
+/// What holding the stylus side button does.
+///
+/// The tool is only switched while the button is held,
+/// and the previous tool is restored when it is released.
+enum StylusButtonAction {
+  /// Temporarily switch to the eraser.
+  eraser,
+
+  /// Temporarily switch to the lasso select tool.
+  select,
+
+  /// Ignore the stylus button.
+  none,
 }
 
 /// An [Stow] that transforms the value of another [Stow].

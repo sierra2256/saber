@@ -14,6 +14,10 @@ class Select extends Tool {
   /// for it to be selected.
   static const minPercentInside = 0.7;
 
+  /// The padding around strokes when they are selected programmatically,
+  /// e.g. after inserting an element.
+  static const padding = 10.0;
+
   var selectResult = SelectResult(
     pageIndex: -1,
     strokes: const [],

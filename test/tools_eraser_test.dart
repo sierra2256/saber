@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perfect_freehand/perfect_freehand.dart';
 import 'package:saber/components/canvas/_stroke.dart';
+import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/tools/eraser.dart';
 import 'package:sbn/has_size.dart';
 
@@ -13,6 +14,8 @@ final _options = StrokeOptions(
 const _eraserPos = Offset(50, 50);
 
 void main() {
+  FlavorConfig.setup();
+
   test('Test that the eraser tool erases the correct strokes', () {
     final eraser = Eraser(size: 10);
 

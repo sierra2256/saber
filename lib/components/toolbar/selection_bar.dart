@@ -6,11 +6,13 @@ import 'package:saber/i18n/strings.g.dart';
 class SelectionBar extends StatelessWidget {
   final VoidCallback duplicateSelection;
   final VoidCallback deleteSelection;
+  final VoidCallback? saveSelectionAsElement;
 
   const new({
     super.key,
     required this.duplicateSelection,
     required this.deleteSelection,
+    this.saveSelectionAsElement,
   });
 
   @override
@@ -44,6 +46,16 @@ class SelectionBar extends StatelessWidget {
             icon: Icons.delete,
             cupertinoIcon: CupertinoIcons.delete,
           ),
+        ),
+        IconButton(
+          onPressed: saveSelectionAsElement,
+          style: TextButton.styleFrom(
+            foregroundColor: ColorScheme.of(context).secondary,
+            backgroundColor: Colors.transparent,
+            shape: const CircleBorder(),
+          ),
+          tooltip: t.editor.selectionBar.saveAsElement,
+          icon: const Icon(Icons.bookmark_add_outlined),
         ),
       ],
     );

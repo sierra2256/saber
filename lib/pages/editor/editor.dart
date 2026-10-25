@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:collapsible/collapsible.dart';
 import 'package:file_picker/file_picker.dart';
@@ -21,6 +22,7 @@ import 'package:saber/components/canvas/canvas_gesture_detector.dart';
 import 'package:saber/components/canvas/canvas_image.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
+import 'package:saber/components/canvas/zoom_writing_box.dart';
 import 'package:saber/components/editor/read_only_banner.dart';
 import 'package:saber/components/theming/adaptive_alert_dialog.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
@@ -28,11 +30,14 @@ import 'package:saber/components/theming/saber_theme.dart';
 import 'package:saber/components/toolbar/color_bar.dart';
 import 'package:saber/components/toolbar/editor_bottom_sheet.dart';
 import 'package:saber/components/toolbar/editor_page_manager.dart';
+import 'package:saber/components/toolbar/elements_bar.dart';
 import 'package:saber/components/toolbar/toolbar.dart';
+import 'package:saber/data/editor/canvas_element.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/editor_history.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/editor/zoom_box.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
@@ -45,13 +50,30 @@ import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/select.dart';
+import 'package:saber/data/tools/selection_transform.dart';
 import 'package:saber/data/tools/shape_pen.dart';
+import 'package:saber/data/tools/tape.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/home/whiteboard.dart';
 import 'package:sbn/change.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
 typedef _PhotoInfo = ({Uint8List bytes, String extension});
+
+/// The last thing that was pasted, so it can be pasted again.
+sealed class _LastPaste;
+
+class _PhotosPaste extends _LastPaste {
+  new(this.photoInfos);
+  final List<_PhotoInfo> photoInfos;
+}
+
+class _ElementPaste extends _LastPaste {
+  new(this.element, this.pageIndex, this.center);
+  final CanvasElement element;
+  final int pageIndex;
+  final Offset center;
+}
 
 class Editor extends StatefulWidget {
   new({super.key, String? path, this.customTitle, this.pdfPath})
@@ -150,6 +172,8 @@ class EditorState extends State<Editor> {
         return Tool.textEditing;
       case .laserPointer:
         return LaserPointer.currentLaserPointer;
+      case .tape:
+        return Tape.currentTape;
     }
   }();
   Tool get currentTool => _currentTool;
@@ -172,12 +196,21 @@ class EditorState extends State<Editor> {
   /// The last non-Eraser [currentTool] value.
   late Tool _lastNonEraserTool = Pen.currentPen;
 
-  /// If the stylus button is pressed, or was pressed, during the current draw gesture.
+  /// Whether the stylus side button is currently held down.
   ///
-  /// For now, this also includes when an [PointerDeviceKind.inverseStylus] is
-  /// used since the stylus rear-end and stylus button currently act the same.
-  /// If we add customized button bindings, we may have to separate this again.
-  var stylusButtonWasPressed = false;
+  /// This also includes when an [PointerDeviceKind.invertedStylus] is
+  /// used since the stylus rear-end and stylus button act the same.
+  var _stylusButtonHeld = false;
+
+  /// The tool to switch back to when the stylus button is released,
+  /// or null if the stylus button hasn't temporarily changed the tool.
+  ///
+  /// See [stows.stylusButtonAction].
+  Tool? _toolBeforeStylusButton;
+
+  /// Whether a draw gesture is currently in progress.
+  /// The tool is not changed by the stylus button in the middle of a stroke.
+  var _isDrawing = false;
 
   @override
   void initState() {
@@ -384,20 +417,14 @@ class EditorState extends State<Editor> {
           coreInfo.pages.insert(item.pageIndex, item.page!);
 
           // fix the page indices of all pages after this one
-          for (int i = item.pageIndex + 1; i < coreInfo.pages.length; ++i) {
-            final page = coreInfo.pages[i];
-            page.updatePageIndex(i);
-          }
+          _updatePageIndices(item.pageIndex);
 
         case .insertPage:
           // remove the page at the given index
           coreInfo.pages.removeAt(item.pageIndex);
 
           // fix the page indices of all pages after this one
-          for (int i = item.pageIndex; i < coreInfo.pages.length; ++i) {
-            final page = coreInfo.pages[i];
-            page.updatePageIndex(i);
-          }
+          _updatePageIndices(item.pageIndex);
 
         case .move:
           for (final stroke in item.strokes) {
@@ -433,6 +460,19 @@ class EditorState extends State<Editor> {
 
         case .backgroundPattern:
           coreInfo.backgroundPattern = item.backgroundPatternChange!.previous;
+
+        case .replaceStrokes:
+          for (final stroke in item.newStrokes!) {
+            coreInfo.pages[stroke.pageIndex].strokes.remove(stroke);
+          }
+          for (final stroke in item.strokes) {
+            createPage(stroke.pageIndex);
+            coreInfo.pages[stroke.pageIndex].insertStroke(stroke);
+          }
+          item.imageRectChanges?.forEach((image, change) {
+            image.dstRect = change.previous;
+          });
+          removeExcessPages();
       }
 
       if (item.type != .move) {
@@ -485,6 +525,16 @@ class EditorState extends State<Editor> {
             backgroundPatternChange: item.backgroundPatternChange!.reverse(),
           ),
         );
+      case .replaceStrokes:
+        undo(
+          item.copyWith(
+            strokes: item.newStrokes,
+            newStrokes: item.strokes,
+            imageRectChanges: item.imageRectChanges?.map(
+              (image, change) => MapEntry(image, change.reverse()),
+            ),
+          ),
+        );
     }
   }
 
@@ -507,6 +557,10 @@ class EditorState extends State<Editor> {
   /// The total offset of the current move gesture.
   /// Used to record a move in the history.
   Offset moveOffset = .zero;
+
+  /// Used while a selection handle is dragged to resize or rotate
+  /// the selection.
+  SelectionTransformer? _selectionTransformer;
 
   var isHovering = true;
   int? dragPageIndex;
@@ -556,8 +610,16 @@ class EditorState extends State<Editor> {
 
   void onDrawStart(ScaleStartDetails details) {
     final page = coreInfo.pages[dragPageIndex!];
-    final position = page.renderBox!.globalToLocal(details.focalPoint);
+    drawStartAt(page.renderBox!.globalToLocal(details.focalPoint));
+  }
+
+  /// Starts a draw gesture at [position] on page [dragPageIndex].
+  ///
+  /// This is used by [onDrawStart] and by the zoom writing box.
+  void drawStartAt(Offset position) {
+    final page = coreInfo.pages[dragPageIndex!];
     history.canRedo = false;
+    _isDrawing = true;
 
     if (currentTool is Pen) {
       (currentTool as Pen).onDragStart(
@@ -567,16 +629,27 @@ class EditorState extends State<Editor> {
         currentPressure,
       );
     } else if (currentTool is Eraser) {
-      for (final stroke in (currentTool as Eraser).checkForOverlappingStrokes(
-        position,
-        page.strokes,
-      )) {
-        page.strokes.remove(stroke);
-      }
-      removeExcessPages();
+      _erase(currentTool as Eraser, position, page);
     } else if (currentTool is Select) {
       final select = currentTool as Select;
-      if (select.doneSelecting &&
+      final handle =
+          select.doneSelecting &&
+              select.selectResult.pageIndex == dragPageIndex!
+          ? SelectionHandle.hitTest(
+              position,
+              select.selectResult,
+              _transformationController.value.approxScale,
+            )
+          : null;
+      if (handle != null) {
+        // resize or rotate selection in onDrawUpdate
+        _selectionTransformer = SelectionTransformer(
+          handle: handle,
+          select: select,
+          page: page,
+          startPosition: position,
+        );
+      } else if (select.doneSelecting &&
           select.selectResult.pageIndex == dragPageIndex! &&
           select.selectResult.path.contains(position)) {
         // drag selection in onDrawUpdate
@@ -601,24 +674,25 @@ class EditorState extends State<Editor> {
 
   void onDrawUpdate(ScaleUpdateDetails details) {
     final page = coreInfo.pages[dragPageIndex!];
-    final position = page.renderBox!.globalToLocal(details.focalPoint);
+    drawUpdateAt(page.renderBox!.globalToLocal(details.focalPoint));
+  }
+
+  /// Continues a draw gesture at [position] on page [dragPageIndex].
+  void drawUpdateAt(Offset position) {
+    final page = coreInfo.pages[dragPageIndex!];
     final offset = position - previousPosition;
 
     if (currentTool is Pen) {
       (currentTool as Pen).onDragUpdate(position, currentPressure);
       page.redrawStrokes();
     } else if (currentTool is Eraser) {
-      for (final stroke in (currentTool as Eraser).checkForOverlappingStrokes(
-        position,
-        page.strokes,
-      )) {
-        page.strokes.remove(stroke);
-      }
+      _erase(currentTool as Eraser, position, page);
       page.redrawStrokes();
-      removeExcessPages();
     } else if (currentTool is Select) {
       final select = currentTool as Select;
-      if (select.doneSelecting) {
+      if (_selectionTransformer != null) {
+        _selectionTransformer!.update(position);
+      } else if (select.doneSelecting) {
         for (final stroke in select.selectResult.strokes) {
           stroke.shift(offset);
         }
@@ -647,7 +721,18 @@ class EditorState extends State<Editor> {
         if (newStroke == null) return;
         if (newStroke.isEmpty) return;
 
-        if (stows.autoStraightenLines.value &&
+        if (currentTool is Tape) {
+          if (Tape.isTap(newStroke)) {
+            // Tapping tape reveals (or hides) what's underneath
+            shouldSave = false;
+            final position = newStroke.lowQualityPath.getBounds().center;
+            final tape = Tape.tapeAt(page, position);
+            if (tape != null) Tape.toggleRevealed(page, tape);
+            return;
+          }
+          // Tape is always straight
+          newStroke.convertToLine();
+        } else if (stows.autoStraightenLines.value &&
             currentTool is! ShapePen &&
             newStroke.isStraightLine()) {
           newStroke.convertToLine();
@@ -664,22 +749,54 @@ class EditorState extends State<Editor> {
           ),
         );
       } else if (currentTool is Eraser) {
-        final erased = (currentTool as Eraser).onDragEnd();
-        if (stylusButtonWasPressed || stows.disableEraserAfterUse.value) {
+        final eraser = currentTool as Eraser;
+        if (_toolBeforeStylusButton == null &&
+            stows.disableEraserAfterUse.value) {
           // restore previous tool
-          stylusButtonWasPressed = false;
           currentTool = _lastNonEraserTool;
         }
-        if (erased.isEmpty) return;
-        history.recordChange(
-          EditorHistoryItem(
-            type: .erase,
-            pageIndex: dragPageIndex!,
-            strokes: erased,
-            images: [],
-          ),
-        );
+        if (eraser.partial) {
+          final (:erased, :created) = eraser.onPartialDragEnd();
+          if (erased.isEmpty) return;
+          history.recordChange(
+            EditorHistoryItem(
+              type: .replaceStrokes,
+              pageIndex: dragPageIndex!,
+              strokes: erased,
+              newStrokes: created,
+              images: [],
+            ),
+          );
+        } else {
+          final erased = eraser.onDragEnd();
+          if (erased.isEmpty) return;
+          history.recordChange(
+            EditorHistoryItem(
+              type: .erase,
+              pageIndex: dragPageIndex!,
+              strokes: erased,
+              images: [],
+            ),
+          );
+        }
       } else if (currentTool is Select) {
+        final transformer = _selectionTransformer;
+        _selectionTransformer = null;
+        if (transformer != null) {
+          if (!transformer.hasChanged) return;
+          history.recordChange(
+            EditorHistoryItem(
+              type: .replaceStrokes,
+              pageIndex: dragPageIndex!,
+              strokes: transformer.originalStrokes,
+              newStrokes: transformer.newStrokes,
+              imageRectChanges: transformer.imageRectChanges,
+              images: [],
+            ),
+          );
+          return;
+        }
+
         if (moveOffset == .zero) return;
         final select = currentTool as Select;
         if (select.doneSelecting) {
@@ -718,6 +835,24 @@ class EditorState extends State<Editor> {
     });
 
     if (shouldSave) autosaveAfterDelay();
+
+    _isDrawing = false;
+    // apply any stylus button changes that happened during the stroke
+    _applyStylusButtonState();
+  }
+
+  void _erase(Eraser eraser, Offset position, EditorPage page) {
+    if (eraser.partial) {
+      eraser.erasePartially(position, page.strokes);
+    } else {
+      for (final stroke in eraser.checkForOverlappingStrokes(
+        position,
+        page.strokes,
+      )) {
+        page.strokes.remove(stroke);
+      }
+    }
+    removeExcessPages();
   }
 
   void onInteractionEnd(ScaleEndDetails details) {
@@ -741,23 +876,60 @@ class EditorState extends State<Editor> {
     isHovering = false;
   }
 
+  /// Holding the stylus button temporarily switches to the tool
+  /// chosen in [stows.stylusButtonAction] (the eraser by default),
+  /// and releasing it switches back to the previous tool.
   void onStylusButtonChanged(bool buttonIsPressed) {
-    stylusButtonWasPressed |= buttonIsPressed;
+    _stylusButtonHeld = buttonIsPressed;
 
-    if (!isHovering) return;
-    if (buttonIsPressed) {
-      // button pressed while hovering, switch to Eraser
-      if (currentTool is! Eraser) {
-        currentTool = Eraser();
-      }
-    } else {
-      // button was released while hovering, switch back to non-Eraser
-      if (currentTool is Eraser) {
-        currentTool = _lastNonEraserTool;
-      }
+    // Don't change tools in the middle of a stroke,
+    // this is done in [onDrawEnd] instead.
+    if (_isDrawing) return;
+    _applyStylusButtonState();
+  }
+
+  void _applyStylusButtonState() {
+    final changed = _stylusButtonHeld
+        ? _startStylusButtonTool()
+        : _endStylusButtonTool();
+    if (changed && mounted) setState(() {});
+  }
+
+  /// Returns whether the tool was changed.
+  bool _startStylusButtonTool() {
+    if (_toolBeforeStylusButton != null) return false;
+
+    final Tool tool;
+    switch (stows.stylusButtonAction.value) {
+      case .eraser:
+        if (currentTool is Eraser) return false;
+        tool = Eraser();
+      case .select:
+        if (currentTool is Select) return false;
+        tool = Select.currentSelect;
+      case .none:
+        return false;
     }
 
-    if (mounted) setState(() {});
+    _toolBeforeStylusButton = currentTool;
+    currentTool = tool;
+    return true;
+  }
+
+  /// Returns whether the tool was changed.
+  bool _endStylusButtonTool() {
+    final previousTool = _toolBeforeStylusButton;
+    if (previousTool == null) return false;
+    _toolBeforeStylusButton = null;
+
+    if (currentTool case final Select select
+        when select.doneSelecting && !select.selectResult.isEmpty) {
+      // Stay in the select tool so the selection can be moved
+      return false;
+    }
+
+    currentTool = previousTool;
+    return true;
   }
 
   void onMoveImage(EditorImage image, Rect offset) {
@@ -805,7 +977,9 @@ class EditorState extends State<Editor> {
       }
       autosaveAfterDelay();
     });
-    quill.focusNode.addListener(_onQuillFocusChange);
+    quill.focusNode
+      ..removeListener(_onQuillFocusChange)
+      ..addListener(_onQuillFocusChange);
   }
 
   void _onQuillFocusChange() {
@@ -1108,7 +1282,12 @@ class EditorState extends State<Editor> {
   /// Returns the number of photos picked.
   ///
   /// If [photoInfos] is provided, it will be used instead of the file picker.
-  Future<int> _pickPhotos([List<_PhotoInfo>? photoInfos]) async {
+  ///
+  /// The images are shifted by [offset], e.g. when pasting again.
+  Future<int> _pickPhotos([
+    List<_PhotoInfo>? photoInfos,
+    Offset offset = .zero,
+  ]) async {
     if (coreInfo.readOnly) return 0;
 
     final currentPageIndex = this.currentPageIndex;
@@ -1148,6 +1327,11 @@ class EditorState extends State<Editor> {
             assetCache: coreInfo.assetCache,
           ),
     ];
+    if (offset != .zero) {
+      for (final image in images) {
+        image.dstRect = image.dstRect.shift(offset);
+      }
+    }
 
     history.recordChange(
       EditorHistoryItem(
@@ -1319,7 +1503,140 @@ class EditorState extends State<Editor> {
       await Future.delayed(const Duration(milliseconds: 50));
     }
 
-    await _pickPhotos(photoInfos);
+    if (await _pickPhotos(photoInfos) > 0) {
+      _setLastPaste(_PhotosPaste(photoInfos));
+    }
+  }
+
+  _LastPaste? _lastPaste;
+
+  /// How many times [_lastPaste] has been pasted again,
+  /// used to offset each copy so they don't overlap.
+  var _pasteAgainCount = 0;
+
+  void _setLastPaste(_LastPaste lastPaste) {
+    final hadLastPaste = _lastPaste != null;
+    _lastPaste = lastPaste;
+    _pasteAgainCount = 0;
+    // show the paste again button
+    if (!hadLastPaste && mounted) setState(() {});
+  }
+
+  /// Repeats the last paste (images or an element),
+  /// offset a little from the previous copy.
+  void pasteAgain() {
+    if (coreInfo.readOnly) return;
+    final lastPaste = _lastPaste;
+    if (lastPaste == null) return;
+
+    _pasteAgainCount++;
+    final offset = const Offset(20, 20) * _pasteAgainCount.toDouble();
+    switch (lastPaste) {
+      case _PhotosPaste(:final photoInfos):
+        _pickPhotos(photoInfos, offset);
+      case _ElementPaste(:final element, :final pageIndex, :final center):
+        if (pageIndex >= coreInfo.pages.length) return;
+        _insertStrokes(
+          element.instantiate(
+            page: coreInfo.pages[pageIndex],
+            pageIndex: pageIndex,
+            center: center + offset,
+          ),
+          pageIndex,
+        );
+    }
+    setState(() {});
+  }
+
+  /// Saves the strokes in the current selection as a [CanvasElement],
+  /// so they can be inserted into any note.
+  void saveSelectionAsElement() {
+    final select = Select.currentSelect;
+    if (!select.doneSelecting || select.selectResult.strokes.isEmpty) return;
+
+    final element = CanvasElement.fromStrokes(select.selectResult.strokes);
+    stows.savedElements.value = [
+      ...stows.savedElements.value,
+      element.encode(),
+    ];
+    ScaffoldMessenger.maybeOf(context)
+        ?.showSnackBar(SnackBar(content: Text(t.editor.elements.saved)));
+  }
+
+  /// Inserts [element] at [globalPosition], or in the middle of the
+  /// visible part of the current page if [globalPosition] is null.
+  void insertElement(CanvasElement element, {Offset? globalPosition}) {
+    if (coreInfo.readOnly) return;
+
+    final int pageIndex;
+    final Offset center;
+    if (globalPosition != null) {
+      final dropPageIndex = onWhichPageIsFocalPoint(globalPosition);
+      if (dropPageIndex == null) return;
+      pageIndex = dropPageIndex;
+      center = coreInfo.pages[pageIndex].renderBox!.globalToLocal(
+        globalPosition,
+      );
+    } else {
+      pageIndex = currentPageIndex;
+      final page = coreInfo.pages[pageIndex];
+      final editorBox = context.findRenderObject() as RenderBox?;
+      final screenCenter = editorBox?.localToGlobal(
+        editorBox.size.center(Offset.zero),
+      );
+      final pageCenter = page.size.center(Offset.zero);
+      final visibleCenter = screenCenter != null && page.renderBox != null
+          ? page.renderBox!.globalToLocal(screenCenter)
+          : pageCenter;
+      center = (Offset.zero & page.size).contains(visibleCenter)
+          ? visibleCenter
+          : pageCenter;
+    }
+
+    createPage(pageIndex);
+    _insertStrokes(
+      element.instantiate(
+        page: coreInfo.pages[pageIndex],
+        pageIndex: pageIndex,
+        center: center,
+      ),
+      pageIndex,
+    );
+    _setLastPaste(_ElementPaste(element, pageIndex, center));
+    setState(() {});
+  }
+
+  /// Adds [strokes] to the page and selects them so they can be moved.
+  void _insertStrokes(List<Stroke> strokes, int pageIndex) {
+    if (strokes.isEmpty) return;
+    createPage(pageIndex);
+    final page = coreInfo.pages[pageIndex];
+    for (final stroke in strokes) {
+      page.insertStroke(stroke);
+    }
+    history.recordChange(
+      EditorHistoryItem(
+        type: .draw,
+        pageIndex: pageIndex,
+        strokes: strokes,
+        images: [],
+      ),
+    );
+
+    // select the new strokes
+    currentTool = Select.currentSelect;
+    Select.currentSelect
+      ..selectResult = SelectResult(
+        pageIndex: pageIndex,
+        strokes: List.of(strokes),
+        images: [],
+        path: Path()
+          ..addRect(CanvasElement.boundsOf(strokes).inflate(Select.padding)),
+      )
+      ..doneSelecting = true;
+
+    page.redrawStrokes();
+    autosaveAfterDelay();
   }
 
   Future exportAsPdf(BuildContext context) async {
@@ -1399,8 +1716,16 @@ class EditorState extends State<Editor> {
       onHoveringEnd: onHoveringEnd,
       onStylusButtonChanged: onStylusButtonChanged,
       updatePointerData: updatePointerData,
-      undo: undo,
-      redo: redo,
+      undo: () {
+        if (!history.canUndo) return false;
+        undo();
+        return true;
+      },
+      redo: () {
+        if (!history.canRedo) return false;
+        redo();
+        return true;
+      },
       pages: coreInfo.pages,
       initialPageIndex: coreInfo.initialPageIndex,
       pageBuilder: pageBuilder,
@@ -1449,6 +1774,9 @@ class EditorState extends State<Editor> {
         child: Toolbar(
           readOnly: coreInfo.readOnly,
           setTool: (tool) {
+            // the user picked a tool, so don't restore the old one later
+            _toolBeforeStylusButton = null;
+
             if (tool is Eraser && currentTool is Eraser) {
               // setTool(Eraser) is a special case to toggle the eraser on/off
               tool = _lastNonEraserTool;
@@ -1458,6 +1786,8 @@ class EditorState extends State<Editor> {
 
             if (tool is Highlighter) {
               Highlighter.currentHighlighter = tool;
+            } else if (tool is Tape) {
+              Tape.currentTape = tool;
             } else if (tool is Pencil) {
               Pencil.currentPencil = tool;
             } else if (tool is Pen) {
@@ -1606,6 +1936,9 @@ class EditorState extends State<Editor> {
           },
           pickPhoto: _pickPhotos,
           paste: paste,
+          pasteAgain: _lastPaste == null ? null : pasteAgain,
+          insertElement: insertElement,
+          saveSelectionAsElement: saveSelectionAsElement,
           exportAsSba: exportAsSba,
           exportAsPdf: exportAsPdf,
           exportAsPng: exportAsPng,
@@ -1655,16 +1988,10 @@ class EditorState extends State<Editor> {
               transformationController: _transformationController,
             );
           }),
-          showPages: () {
-            showDialog(
-              context: context,
-              builder: (context) => AdaptiveAlertDialog(
-                title: Text(t.editor.pages),
-                content: pageManager(context),
-                actions: const [],
-              ),
-            );
-          },
+          showingPages: showPageSidebar,
+          toggleZoomBox: toggleZoomBox,
+          zoomBoxOpen: zoomBox != null,
+          showPages: () => _setPageSidebarShown(!showPageSidebar),
           showNoteSettings: () {
             showModalBottomSheet(
               context: context,
@@ -1679,6 +2006,19 @@ class EditorState extends State<Editor> {
       ),
     );
 
+    // The toolbar already avoids the system UI on its side
+    final pageSidebar = SafeArea(
+      top: stows.editorToolbarAlignment.value != AxisDirection.up,
+      bottom: stows.editorToolbarAlignment.value != AxisDirection.down,
+      child: Column(
+        crossAxisAlignment: .stretch,
+        children: [
+          Expanded(child: _buildPageSidebar(context)),
+          if (zoomBox != null) _buildZoomBox(),
+        ],
+      ),
+    );
+
     // The toolbar floats over the canvas so the page stays visible
     // around (and scrolls underneath) the toolbar, like GoodNotes.
     final Widget body = Column(
@@ -1686,33 +2026,55 @@ class EditorState extends State<Editor> {
         Expanded(
           child: Stack(
             children: [
-              Positioned.fill(child: canvas),
-              switch (stows.editorToolbarAlignment.value) {
-                AxisDirection.up => Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: toolbar,
+              Positioned.fill(
+                // elements can be dragged from the elements bar onto a page
+                child: DragTarget<CanvasElement>(
+                  onAcceptWithDetails: (details) => insertElement(
+                    details.data,
+                    globalPosition:
+                        details.offset +
+                        const Offset(
+                          ElementsBar.previewSize / 2,
+                          ElementsBar.previewSize / 2,
+                        ),
+                  ),
+                  builder: (context, _, _) => canvas,
                 ),
-                AxisDirection.down => Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: toolbar,
-                ),
-                AxisDirection.left => Positioned(
-                  top: 0,
-                  bottom: 0,
-                  left: 0,
-                  child: toolbar,
-                ),
-                AxisDirection.right => Positioned(
-                  top: 0,
-                  bottom: 0,
-                  right: 0,
-                  child: toolbar,
-                ),
-              },
+              ),
+              // The toolbar and page sidebar float over the canvas,
+              // and the sidebar is placed next to the toolbar.
+              Positioned.fill(
+                child: switch (stows.editorToolbarAlignment.value) {
+                  AxisDirection.up => Column(
+                    crossAxisAlignment: .stretch,
+                    children: [
+                      toolbar,
+                      Expanded(child: pageSidebar),
+                    ],
+                  ),
+                  AxisDirection.down => Column(
+                    crossAxisAlignment: .stretch,
+                    children: [
+                      Expanded(child: pageSidebar),
+                      toolbar,
+                    ],
+                  ),
+                  AxisDirection.left => Row(
+                    crossAxisAlignment: .stretch,
+                    children: [
+                      toolbar,
+                      Expanded(child: pageSidebar),
+                    ],
+                  ),
+                  AxisDirection.right => Row(
+                    crossAxisAlignment: .stretch,
+                    children: [
+                      Expanded(child: pageSidebar),
+                      toolbar,
+                    ],
+                  ),
+                },
+              ),
             ],
           ),
         ),
@@ -1898,10 +2260,127 @@ class EditorState extends State<Editor> {
     );
   }
 
+  /// The zoom writing box, or null if it's closed.
+  ZoomBox? zoomBox;
+
+  /// Opens the zoom writing box near the top of the visible part
+  /// of the current page, or closes it.
+  void toggleZoomBox() => setState(() {
+    final oldZoomBox = zoomBox;
+    if (oldZoomBox != null) {
+      zoomBox = null;
+      if (oldZoomBox.pageIndex < coreInfo.pages.length) {
+        coreInfo.pages[oldZoomBox.pageIndex]
+          ..zoomBoxTarget = null
+          ..redrawStrokes();
+      }
+      return;
+    }
+
+    final pageIndex = currentPageIndex;
+    final page = coreInfo.pages[pageIndex];
+    final height = coreInfo.lineHeight * 1.5;
+
+    var top = 0.0;
+    final editorBox = context.findRenderObject() as RenderBox?;
+    if (editorBox != null && page.renderBox != null) {
+      // a little below the top of the screen
+      top = page.renderBox!
+          .globalToLocal(editorBox.localToGlobal(const Offset(0, 200)))
+          .dy;
+    }
+    final zoomBoxLeft = page.size.width * ZoomBox.marginFraction;
+    zoomBox = ZoomBox(
+      pageIndex: pageIndex,
+      pageSize: page.size,
+      position: Offset(
+        zoomBoxLeft,
+        top.clamp(0, max(0, page.size.height - height)),
+      ),
+      height: height,
+    );
+  });
+
+  Widget _buildZoomBox() {
+    final zoomBox = this.zoomBox!;
+    return Padding(
+      padding: const .all(8),
+      child: ZoomWritingBox(
+        zoomBox: zoomBox,
+        coreInfo: coreInfo,
+        onDrawStart: (position) {
+          if (coreInfo.readOnly) return;
+          if (currentTool == Tool.textEditing) return;
+          dragPageIndex = zoomBox.pageIndex;
+          drawStartAt(position);
+        },
+        onDrawUpdate: (position) {
+          if (!_isDrawing) return;
+          drawUpdateAt(position);
+        },
+        onDrawEnd: () {
+          if (!_isDrawing) return;
+          onDrawEnd(ScaleEndDetails());
+        },
+        updatePointerData: updatePointerData,
+        onTargetChanged: (target) {
+          coreInfo.pages[zoomBox.pageIndex]
+            ..zoomBoxTarget = target
+            ..redrawStrokes();
+        },
+        onClose: toggleZoomBox,
+      ),
+    );
+  }
+
+  /// Whether the page thumbnail sidebar is shown.
+  var showPageSidebar = false;
+
+  /// The page thumbnail sidebar, which slides in from the left
+  /// (or next to the toolbar if the toolbar is on the left).
+  Widget _buildPageSidebar(BuildContext context) {
+    return Align(
+      alignment: .centerLeft,
+      child: Padding(
+        padding: const .all(8),
+        child: AnimatedSlide(
+          offset: showPageSidebar ? Offset.zero : const Offset(-1.2, 0),
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          onEnd: () => setState(() => _pageSidebarAnimating = false),
+          child: Offstage(
+            offstage: !showPageSidebar && !_pageSidebarAnimating,
+            child: pageManager(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The sidebar is kept offstage when hidden, except while it's sliding out.
+  var _pageSidebarAnimating = false;
+
+  void _setPageSidebarShown(bool shown) => setState(() {
+    if (showPageSidebar == shown) return;
+    showPageSidebar = shown;
+    _pageSidebarAnimating = true;
+  });
+
+  /// Updates the page index of each page's contents,
+  /// starting from [startIndex], after pages were inserted or removed.
+  void _updatePageIndices([int startIndex = 0]) {
+    for (int i = startIndex; i < coreInfo.pages.length; i++) {
+      final page = coreInfo.pages[i];
+      page.updatePageIndex(i);
+      listenToQuillChanges(page.quill, i);
+    }
+  }
+
   Widget pageManager(BuildContext context) {
     return EditorPageManager(
       coreInfo: coreInfo,
-      currentPageIndex: currentPageIndex,
+      getCurrentPageIndex: () => currentPageIndex,
+      onClose: () => _setPageSidebarShown(false),
       redrawAndSave: () => setState(() {
         if (coreInfo.readOnly) return;
         autosaveAfterDelay();
@@ -1929,11 +2408,11 @@ class EditorState extends State<Editor> {
           backgroundImage: page.backgroundImage?.copy()?..pageIndex += 1,
         );
         coreInfo.pages.insert(pageIndex + 1, newPage);
-        listenToQuillChanges(newPage.quill, pageIndex + 1);
+        _updatePageIndices(pageIndex + 1);
         history.recordChange(
           EditorHistoryItem(
             type: .insertPage,
-            pageIndex: pageIndex,
+            pageIndex: pageIndex + 1,
             strokes: const [],
             images: const [],
             page: newPage,
@@ -1946,6 +2425,7 @@ class EditorState extends State<Editor> {
         if (coreInfo.readOnly) return;
         final page = coreInfo.pages.removeAt(pageIndex);
         createPage(pageIndex - 1);
+        _updatePageIndices(pageIndex);
         history.recordChange(
           EditorHistoryItem(
             type: .deletePage,
@@ -1965,7 +2445,7 @@ class EditorState extends State<Editor> {
     if (coreInfo.readOnly) return;
     final page = EditorPage();
     coreInfo.pages.insert(pageIndex + 1, page);
-    listenToQuillChanges(page.quill, pageIndex + 1);
+    _updatePageIndices(pageIndex + 1);
     history.recordChange(
       EditorHistoryItem(
         type: .insertPage,

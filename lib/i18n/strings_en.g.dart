@@ -137,6 +137,11 @@ class Translations$settings$en {
 	/// en: 'Auto'
 	String get systemLanguage => 'Auto';
 
+	List<String> get stylusButtonActions => [
+		'Eraser',
+		'Lasso',
+		'Nothing',
+	];
 	List<String> get axisDirections => [
 		'Top',
 		'Right',
@@ -307,9 +312,17 @@ class Translations$editor$en {
 	late final Translations$editor$toolbar$en toolbar = Translations$editor$toolbar$en.internal(_root);
 	late final Translations$editor$pens$en pens = Translations$editor$pens$en.internal(_root);
 	late final Translations$editor$penOptions$en penOptions = Translations$editor$penOptions$en.internal(_root);
+	late final Translations$editor$favoritePens$en favoritePens = Translations$editor$favoritePens$en.internal(_root);
+	late final Translations$editor$eraserOptions$en eraserOptions = Translations$editor$eraserOptions$en.internal(_root);
 	late final Translations$editor$colors$en colors = Translations$editor$colors$en.internal(_root);
 	late final Translations$editor$imageOptions$en imageOptions = Translations$editor$imageOptions$en.internal(_root);
 	late final Translations$editor$selectionBar$en selectionBar = Translations$editor$selectionBar$en.internal(_root);
+	late final Translations$editor$elements$en elements = Translations$editor$elements$en.internal(_root);
+
+	/// en: 'Paste again'
+	String get pasteAgain => 'Paste again';
+
+	late final Translations$editor$zoomBox$en zoomBox = Translations$editor$zoomBox$en.internal(_root);
 	late final Translations$editor$menu$en menu = Translations$editor$menu$en.internal(_root);
 	late final Translations$editor$readOnlyBanner$en readOnlyBanner = Translations$editor$readOnlyBanner$en.internal(_root);
 	late final Translations$editor$versionTooNew$en versionTooNew = Translations$editor$versionTooNew$en.internal(_root);
@@ -696,6 +709,9 @@ class Translations$settings$prefLabels$en {
 
 	/// en: 'Auto-disable the eraser'
 	String get disableEraserAfterUse => 'Auto-disable the eraser';
+
+	/// en: 'Hold the stylus button for'
+	String get stylusButtonAction => 'Hold the stylus button for';
 
 	/// en: 'Hide the finger drawing toggle'
 	String get hideFingerDrawingToggle => 'Hide the finger drawing toggle';
@@ -1114,6 +1130,9 @@ class Translations$editor$pens$en {
 
 	/// en: 'Laser pointer'
 	String get laserPointer => 'Laser pointer';
+
+	/// en: 'Tape'
+	String get tape => 'Tape';
 }
 
 // Path: editor.penOptions
@@ -1126,6 +1145,45 @@ class Translations$editor$penOptions$en {
 
 	/// en: 'Size'
 	String get size => 'Size';
+}
+
+// Path: editor.favoritePens
+class Translations$editor$favoritePens$en {
+	Translations$editor$favoritePens$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Add to favorite pens'
+	String get add => 'Add to favorite pens';
+
+	/// en: 'Replace with current pen'
+	String get replace => 'Replace with current pen';
+
+	/// en: 'Remove'
+	String get remove => 'Remove';
+
+	/// en: 'Favorite pen'
+	String get title => 'Favorite pen';
+}
+
+// Path: editor.eraserOptions
+class Translations$editor$eraserOptions$en {
+	Translations$editor$eraserOptions$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Erasing whole strokes (tap to erase partially)'
+	String get wholeStroke => 'Erasing whole strokes (tap to erase partially)';
+
+	/// en: 'Erasing partially (tap to erase whole strokes)'
+	String get partial => 'Erasing partially (tap to erase whole strokes)';
+
+	/// en: 'Only erase highlighter'
+	String get highlighterOnly => 'Only erase highlighter';
 }
 
 // Path: editor.colors
@@ -1255,6 +1313,54 @@ class Translations$editor$selectionBar$en {
 
 	/// en: 'Duplicate'
 	String get duplicate => 'Duplicate';
+
+	/// en: 'Save to elements'
+	String get saveAsElement => 'Save to elements';
+}
+
+// Path: editor.elements
+class Translations$editor$elements$en {
+	Translations$editor$elements$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Elements'
+	String get elements => 'Elements';
+
+	/// en: 'Lasso something and save it to add it here'
+	String get empty => 'Lasso something and save it to add it here';
+
+	/// en: 'Edit elements'
+	String get edit => 'Edit elements';
+
+	/// en: 'Saved to elements'
+	String get saved => 'Saved to elements';
+}
+
+// Path: editor.zoomBox
+class Translations$editor$zoomBox$en {
+	Translations$editor$zoomBox$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Zoom writing box'
+	String get title => 'Zoom writing box';
+
+	/// en: 'Previous line'
+	String get lineUp => 'Previous line';
+
+	/// en: 'Move back'
+	String get back => 'Move back';
+
+	/// en: 'Move forward'
+	String get forward => 'Move forward';
+
+	/// en: 'New line'
+	String get newLine => 'New line';
 }
 
 // Path: editor.menu

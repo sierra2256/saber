@@ -13,7 +13,9 @@ import 'package:saber/data/extensions/color_extensions.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:saber/data/tools/select.dart';
+import 'package:saber/data/tools/selection_transform.dart';
 import 'package:saber/data/tools/shape_pen.dart';
+import 'package:saber/data/tools/tape.dart';
 
 class CanvasPainter extends CustomPainter {
   const new({
@@ -26,6 +28,7 @@ class CanvasPainter extends CustomPainter {
     required this.primaryColor,
     required this.page,
     required this.showPageIndicator,
+    this.showZoomBoxTarget = true,
     required this.pageIndex,
     required this.totalPages,
     required this.currentScale,
@@ -40,6 +43,10 @@ class CanvasPainter extends CustomPainter {
   final Color primaryColor;
   final EditorPage page;
   final bool showPageIndicator;
+
+  /// Whether to show the target area of the zoom writing box,
+  /// see [EditorPage.zoomBoxTarget].
+  final bool showZoomBoxTarget;
   final int pageIndex;
   final int totalPages;
   final double currentScale;
@@ -51,10 +58,12 @@ class CanvasPainter extends CustomPainter {
 
     _drawHighlighterStrokes(canvas, canvasRect);
     _drawNonHighlighterStrokes(canvas);
+    _drawTapes(canvas);
     for (final stroke in laserStrokes) _drawLaserStroke(canvas, stroke);
     _drawCurrentStroke(canvas);
     _drawDetectedShape(canvas);
     _drawSelection(canvas);
+    _drawZoomBoxTarget(canvas);
     _drawPageIndicator(canvas, size);
   }
 
@@ -109,6 +118,7 @@ class CanvasPainter extends CustomPainter {
 
     for (final stroke in strokes) {
       if (stroke.toolId == .highlighter) continue;
+      if (stroke.toolId == .tape) continue;
 
       var color = stroke.color.withInversion(invert);
       if (currentSelection?.strokes.contains(stroke) ?? false) {
@@ -149,6 +159,24 @@ class CanvasPainter extends CustomPainter {
       } else {
         canvas.drawPath(_selectPath(stroke), paint);
       }
+    }
+  }
+
+  /// Tape is drawn on top of everything else so it covers the page.
+  void _drawTapes(Canvas canvas) {
+    final paint = Paint();
+    for (final stroke in strokes) {
+      if (stroke.toolId != .tape) continue;
+
+      var color = stroke.color.withInversion(invert);
+      if (page.revealedTapes.contains(stroke)) {
+        color = color.withAlpha(Tape.revealedAlpha);
+      }
+      if (currentSelection?.strokes.contains(stroke) ?? false) {
+        color = Color.lerp(color, primaryColor, 0.5)!;
+      }
+      paint.color = color;
+      canvas.drawPath(_selectPath(stroke), paint);
     }
   }
 
@@ -246,6 +274,58 @@ class CanvasPainter extends CustomPainter {
       Paint()
         ..color = primaryColor
         ..strokeWidth = 3
+        ..style = .stroke,
+    );
+
+    _drawSelectionHandles(canvas, currentSelection!);
+  }
+
+  /// Draws a bounding box with handles to resize and rotate the selection.
+  void _drawSelectionHandles(Canvas canvas, SelectResult selection) {
+    final bounds = SelectionHandle.boundsOf(selection);
+    if (bounds == null) return;
+
+    final scale = currentScale > 0 ? currentScale : 1.0;
+    final linePaint = Paint()
+      ..color = primaryColor
+      ..strokeWidth = 1 / scale
+      ..style = .stroke;
+    final fillPaint = Paint()..color = Colors.white;
+
+    canvas.drawRect(bounds, linePaint);
+
+    final radius = SelectionHandle.radius / scale;
+    for (final handle in SelectionHandle.values) {
+      if (handle == .rotate) {
+        if (!SelectionHandle.canRotate(selection)) continue;
+        canvas.drawLine(
+          bounds.topCenter,
+          handle.positionIn(bounds, scale),
+          linePaint,
+        );
+      }
+      final position = handle.positionIn(bounds, scale);
+      canvas.drawCircle(position, radius, fillPaint);
+      canvas.drawCircle(position, radius, linePaint..strokeWidth = 2 / scale);
+      linePaint.strokeWidth = 1 / scale;
+    }
+  }
+
+  void _drawZoomBoxTarget(Canvas canvas) {
+    if (!showZoomBoxTarget) return;
+    final target = page.zoomBoxTarget;
+    if (target == null) return;
+
+    final scale = currentScale > 0 ? currentScale : 1.0;
+    canvas.drawRect(
+      target,
+      Paint()..color = primaryColor.withValues(alpha: 0.08),
+    );
+    canvas.drawRect(
+      target,
+      Paint()
+        ..color = primaryColor
+        ..strokeWidth = 2 / scale
         ..style = .stroke,
     );
   }

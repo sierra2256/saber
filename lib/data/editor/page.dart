@@ -46,6 +46,13 @@ class EditorPage extends ChangeNotifier implements HasSize {
 
   final List<Stroke> strokes;
   final List<LaserStroke> laserStrokes;
+
+  /// Tape strokes that have been tapped to reveal what's underneath.
+  /// This isn't saved, so tape is hidden again when the note is reopened.
+  final Set<Stroke> revealedTapes = {};
+
+  /// The target area of the zoom writing box, if it's open on this page.
+  Rect? zoomBoxTarget;
   final List<EditorImage> images;
   final QuillStruct quill;
 

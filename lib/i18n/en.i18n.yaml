@@ -116,6 +116,7 @@ settings:
     maxImageSize: Maximum image size
     autoClearWhiteboardOnExit: Auto-clear the whiteboard
     disableEraserAfterUse: Auto-disable the eraser
+    stylusButtonAction: Hold the stylus button for
     hideFingerDrawingToggle: Hide the finger drawing toggle
     autoDisableFingerDrawingWhenStylusDetected: Auto-disable finger drawing
     editorPromptRename: Prompt you to rename new notes
@@ -161,6 +162,10 @@ settings:
   accentColorPicker:
     pickAColor: Pick a color
   systemLanguage: Auto
+  stylusButtonActions:
+  - Eraser
+  - Lasso
+  - Nothing
   axisDirections:
   - Top
   - Right
@@ -287,8 +292,18 @@ editor:
     pencil: Pencil
     shapePen: Shape pen
     laserPointer: Laser pointer
+    tape: Tape
   penOptions:
     size: Size
+  favoritePens:
+    add: Add to favorite pens
+    replace: Replace with current pen
+    remove: Remove
+    title: Favorite pen
+  eraserOptions:
+    wholeStroke: Erasing whole strokes (tap to erase partially)
+    partial: Erasing partially (tap to erase whole strokes)
+    highlighterOnly: Only erase highlighter
   colors:
     colorPicker: Color picker
     customBrightnessHue: Custom $b $h
@@ -326,6 +341,19 @@ editor:
   selectionBar:
     delete: Delete
     duplicate: Duplicate
+    saveAsElement: Save to elements
+  elements:
+    elements: Elements
+    empty: Lasso something and save it to add it here
+    edit: Edit elements
+    saved: Saved to elements
+  pasteAgain: Paste again
+  zoomBox:
+    title: Zoom writing box
+    lineUp: Previous line
+    back: Move back
+    forward: Move forward
+    newLine: New line
   menu:
     clearPage: Clear page $page/$totalPages
     clearAllPages: Clear all pages

@@ -401,6 +401,141 @@ class Stroke {
     }
   }
 
+  /// Returns a copy of this stroke that is scaled by [scale]
+  /// and rotated by [rotation] radians around [pivot].
+  ///
+  /// The stroke width is scaled too.
+  Stroke transformed({
+    required Offset pivot,
+    double scale = 1,
+    double rotation = 0,
+  }) {
+    final c = cos(rotation), s = sin(rotation);
+    return copy()
+      ..options.size *= scale
+      ..points.clear()
+      ..points.addAll([
+        for (final point in points)
+          PointVector(
+            pivot.dx +
+                ((point.dx - pivot.dx) * c - (point.dy - pivot.dy) * s) * scale,
+            pivot.dy +
+                ((point.dx - pivot.dx) * s + (point.dy - pivot.dy) * c) * scale,
+            point.pressure,
+          ),
+      ])
+      ..markPolygonNeedsUpdating();
+  }
+
+  /// Splits this stroke around a circle at [center] with radius [radius]
+  /// (e.g. a partial eraser), returning the pieces of this stroke
+  /// that are outside of the circle.
+  ///
+  /// Returns null if the stroke doesn't touch the circle,
+  /// in which case the stroke should be left unchanged.
+  /// Returns an empty list if the whole stroke is inside the circle.
+  List<Stroke>? splitAround(Offset center, double radius) {
+    if (points.isEmpty) return null;
+
+    // Account for the width of the stroke
+    final r = radius + options.size / 2;
+    final sqrR = r * r;
+    bool isInside(Offset p) => (p - center).distanceSquared <= sqrR;
+
+    if (points.length == 1) {
+      return isInside(points.first) ? const [] : null;
+    }
+
+    var intersected = isInside(points.first);
+    final pieces = <List<PointVector>>[];
+    var current = <PointVector>[if (!intersected) points.first];
+
+    for (int i = 0; i < points.length - 1; i++) {
+      final a = points[i], b = points[i + 1];
+      final interval = _segmentCircleIntersection(a, b, center, sqrR);
+      if (interval == null) {
+        // this segment is entirely outside the circle
+        current.add(b);
+        continue;
+      }
+
+      intersected = true;
+      final (t0, t1) = interval;
+      if (t0 > 0) current.add(_lerpPoint(a, b, t0));
+      if (current.isNotEmpty) pieces.add(current);
+      current = [];
+      if (t1 < 1) {
+        current.add(_lerpPoint(a, b, t1));
+        current.add(b);
+      }
+    }
+    if (current.isNotEmpty) pieces.add(current);
+
+    if (!intersected) return null;
+
+    return [
+      for (final piece in pieces)
+        // ignore tiny leftover pieces
+        if (piece.length >= 2 && _polylineLength(piece) > options.size / 2)
+          copy()
+            ..points.clear()
+            ..points.addAll(piece)
+            ..markPolygonNeedsUpdating(),
+    ];
+  }
+
+  /// Returns the range of t in [0, 1] where `a + t(b - a)`
+  /// is inside the circle, or null if the segment doesn't
+  /// intersect the circle.
+  static (double, double)? _segmentCircleIntersection(
+    Offset a,
+    Offset b,
+    Offset center,
+    double sqrR,
+  ) {
+    final d = b - a;
+    final f = a - center;
+    final qa = d.distanceSquared;
+    final qc = f.distanceSquared - sqrR;
+    if (qa == 0) {
+      // a and b are the same point
+      return qc <= 0 ? (0, 1) : null;
+    }
+    final qb = 2 * (f.dx * d.dx + f.dy * d.dy);
+    final discriminant = qb * qb - 4 * qa * qc;
+    if (discriminant < 0) return null;
+
+    final sqrtDiscriminant = sqrt(discriminant);
+    final t0 = (-qb - sqrtDiscriminant) / (2 * qa);
+    final t1 = (-qb + sqrtDiscriminant) / (2 * qa);
+    if (t1 < 0 || t0 > 1) return null;
+    return (max(0, t0), min(1, t1));
+  }
+
+  static PointVector _lerpPoint(PointVector a, PointVector b, double t) {
+    final double? pressure;
+    if (a.pressure == null && b.pressure == null) {
+      pressure = null;
+    } else {
+      final pa = a.pressure ?? b.pressure!;
+      final pb = b.pressure ?? a.pressure!;
+      pressure = pa + (pb - pa) * t;
+    }
+    return PointVector(
+      a.dx + (b.dx - a.dx) * t,
+      a.dy + (b.dy - a.dy) * t,
+      pressure,
+    );
+  }
+
+  static double _polylineLength(List<PointVector> points) {
+    var length = 0.0;
+    for (int i = 0; i < points.length - 1; i++) {
+      length += (points[i + 1] - points[i]).distance;
+    }
+    return length;
+  }
+
   Stroke copy() => Stroke(
     color: color,
     pressureEnabled: pressureEnabled,

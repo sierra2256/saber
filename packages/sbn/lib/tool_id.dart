@@ -14,7 +14,8 @@ enum ToolId(final String id) {
   eraser('Eraser'),
   select('Select'),
   textEditing('TextEditingTool'),
-  laserPointer('LaserPointer');
+  laserPointer('LaserPointer'),
+  tape('Tape');
 
   static const codec = EnumCodec(values);
 

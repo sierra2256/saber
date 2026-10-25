@@ -88,6 +88,12 @@ abstract class _SettingsStows {
     (int value) => LayoutSize.values[value],
   );
 
+  static final stylusButtonAction = TransformedStow(
+    stows.stylusButtonAction,
+    (StylusButtonAction value) => value.index,
+    (int value) => StylusButtonAction.values[value],
+  );
+
   static final editorToolbarAlignment = TransformedStow(
     stows.editorToolbarAlignment,
     (AxisDirection value) => value.index,
@@ -365,6 +371,43 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: t.settings.prefDescriptions.disableEraserAfterUse,
                   icon: FontAwesomeIcons.eraser,
                   pref: stows.disableEraserAfterUse,
+                ),
+                SettingsSelection(
+                  title: t.settings.prefLabels.stylusButtonAction,
+                  subtitle:
+                      t.settings.stylusButtonActions[_SettingsStows
+                          .stylusButtonAction
+                          .value],
+                  iconBuilder: (i) => switch (StylusButtonAction.values[i]) {
+                    .eraser => FontAwesomeIcons.eraser,
+                    .select => CupertinoIcons.lasso,
+                    .none => Icons.do_not_touch,
+                  },
+                  pref: _SettingsStows.stylusButtonAction,
+                  optionsWidth: 60,
+                  options: [
+                    ToggleButtonsOption(
+                      StylusButtonAction.eraser.index,
+                      FaIcon(
+                        FontAwesomeIcons.eraser,
+                        semanticLabel: t.settings.stylusButtonActions[0],
+                      ),
+                    ),
+                    ToggleButtonsOption(
+                      StylusButtonAction.select.index,
+                      Icon(
+                        CupertinoIcons.lasso,
+                        semanticLabel: t.settings.stylusButtonActions[1],
+                      ),
+                    ),
+                    ToggleButtonsOption(
+                      StylusButtonAction.none.index,
+                      Icon(
+                        Icons.do_not_touch,
+                        semanticLabel: t.settings.stylusButtonActions[2],
+                      ),
+                    ),
+                  ],
                 ),
                 ValueListenableBuilder(
                   valueListenable: stows.hideFingerDrawingToggle,
