@@ -292,6 +292,7 @@ editor:
     pencil: Pencil
     shapePen: Shape pen
     laserPointer: Laser pointer
+    tape: Tape
   penOptions:
     size: Size
   favoritePens:
@@ -340,6 +341,13 @@ editor:
   selectionBar:
     delete: Delete
     duplicate: Duplicate
+    saveAsElement: Save to elements
+  elements:
+    elements: Elements
+    empty: Lasso something and save it to add it here
+    edit: Edit elements
+    saved: Saved to elements
+  pasteAgain: Paste again
   menu:
     clearPage: Clear page $page/$totalPages
     clearAllPages: Clear all pages

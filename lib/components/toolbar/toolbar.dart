@@ -12,6 +12,7 @@ import 'package:saber/components/theming/adaptive_icon.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/components/theming/uni_icon.dart';
 import 'package:saber/components/toolbar/color_bar.dart';
+import 'package:saber/components/toolbar/elements_bar.dart';
 import 'package:saber/components/toolbar/export_bar.dart';
 import 'package:saber/components/toolbar/favorite_pens.dart';
 import 'package:saber/components/toolbar/floating_panel.dart';
@@ -20,6 +21,7 @@ import 'package:saber/components/toolbar/quick_options.dart';
 import 'package:saber/components/toolbar/selection_bar.dart';
 import 'package:saber/components/toolbar/size_picker.dart';
 import 'package:saber/components/toolbar/toolbar_button.dart';
+import 'package:saber/data/editor/canvas_element.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
@@ -29,6 +31,7 @@ import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/select.dart';
+import 'package:saber/data/tools/tape.dart';
 import 'package:saber/i18n/strings.g.dart';
 
 class Toolbar extends StatefulWidget {
@@ -50,6 +53,9 @@ class Toolbar extends StatefulWidget {
     required this.paste,
     required this.duplicateSelection,
     required this.deleteSelection,
+    this.saveSelectionAsElement,
+    this.insertElement,
+    this.pasteAgain,
     required this.exportAsSba,
     required this.exportAsPdf,
     required this.exportAsPng,
@@ -84,6 +90,13 @@ class Toolbar extends StatefulWidget {
 
   final VoidCallback duplicateSelection;
   final VoidCallback deleteSelection;
+  final VoidCallback? saveSelectionAsElement;
+
+  /// Inserts a saved element into the current page.
+  final ValueChanged<CanvasElement>? insertElement;
+
+  /// Repeats the last paste, or null if nothing was pasted yet.
+  final VoidCallback? pasteAgain;
 
   final Future Function(BuildContext)? exportAsSba;
   final Future Function(BuildContext)? exportAsPdf;
@@ -112,6 +125,7 @@ class Toolbar extends StatefulWidget {
 class _ToolbarState extends State<Toolbar> {
   ValueNotifier<bool> showExportOptions = ValueNotifier(false);
   ValueNotifier<bool> showColorOptions = ValueNotifier(false);
+  ValueNotifier<bool> showElements = ValueNotifier(false);
   ValueNotifier<ToolOptions> toolOptionsType = ValueNotifier(ToolOptions.hide);
 
   @override
@@ -274,11 +288,32 @@ class _ToolbarState extends State<Toolbar> {
                 .select => SelectionBar(
                   duplicateSelection: widget.duplicateSelection,
                   deleteSelection: widget.deleteSelection,
+                  saveSelectionAsElement: widget.saveSelectionAsElement,
                 ),
               },
             ),
           );
         },
+      ),
+      ValueListenableBuilder(
+        valueListenable: showElements,
+        builder: (context, showElements, child) {
+          return Collapsible(
+            axis: isToolbarVertical
+                ? CollapsibleAxis.horizontal
+                : CollapsibleAxis.vertical,
+            maintainState: true,
+            collapsed: !showElements || widget.insertElement == null,
+            child: child!,
+          );
+        },
+        child: FloatingPanel(
+          child: ElementsBar(
+            axis: toolbarAxis,
+            insertElement: (element) => widget.insertElement?.call(element),
+            invert: invert,
+          ),
+        ),
       ),
       ValueListenableBuilder(
         valueListenable: showColorOptions,
@@ -457,6 +492,17 @@ class _ToolbarState extends State<Toolbar> {
                     child: const FaIcon(Highlighter.highlighterIcon, size: 16),
                   ),
                   ToolbarIconButton(
+                    tooltip: t.editor.pens.tape,
+                    selected: widget.currentTool == Tape.currentTape,
+                    enabled: !widget.readOnly,
+                    onPressed: () {
+                      toolOptionsType.value = .hide;
+                      widget.setTool(Tape.currentTape);
+                    },
+                    padding: buttonPadding,
+                    child: const FaIcon(Tape.tapeIcon, size: 16),
+                  ),
+                  ToolbarIconButton(
                     tooltip: t.editor.toolbar.toggleEraser,
                     selected: widget.currentTool is Eraser,
                     enabled: !widget.readOnly,
@@ -510,6 +556,29 @@ class _ToolbarState extends State<Toolbar> {
                       cupertinoIcon: CupertinoIcons.photo,
                     ),
                   ),
+                  if (widget.insertElement != null)
+                    ValueListenableBuilder(
+                      valueListenable: showElements,
+                      builder: (context, showElements, child) =>
+                          ToolbarIconButton(
+                            tooltip: t.editor.elements.elements,
+                            selected: showElements,
+                            enabled: !widget.readOnly,
+                            onPressed: () =>
+                                this.showElements.value = !showElements,
+                            padding: buttonPadding,
+                            child: child!,
+                          ),
+                      child: const Icon(Icons.interests_outlined),
+                    ),
+                  if (widget.pasteAgain != null)
+                    ToolbarIconButton(
+                      tooltip: t.editor.pasteAgain,
+                      enabled: !widget.readOnly,
+                      onPressed: widget.pasteAgain,
+                      padding: buttonPadding,
+                      child: const Icon(Icons.content_paste_go),
+                    ),
                 ],
               ),
               if (currentColor != null && !widget.readOnly) ...[

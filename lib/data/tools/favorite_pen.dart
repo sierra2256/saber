@@ -3,6 +3,7 @@ import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/shape_pen.dart';
+import 'package:saber/data/tools/tape.dart';
 import 'package:sbn/tool_id.dart';
 
 /// A saved tool + color + width combination,
@@ -35,6 +36,7 @@ class FavoritePen {
 
   Object get icon => switch (toolId) {
     .highlighter => Highlighter.highlighterIcon,
+    .tape => Tape.tapeIcon,
     .pencil => Pencil.pencilIcon,
     .shapePen => ShapePen.shapePenIcon,
     .ballpointPen => Pen.ballpointPenIcon,
@@ -53,6 +55,8 @@ class FavoritePen {
         pen = Highlighter.currentHighlighter;
       case .pencil:
         pen = Pencil.currentPencil;
+      case .tape:
+        pen = Tape.currentTape;
       case .shapePen:
         if (Pen.currentPen is! ShapePen) Pen.currentPen = ShapePen();
         pen = Pen.currentPen;

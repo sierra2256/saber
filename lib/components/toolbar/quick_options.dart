@@ -8,6 +8,7 @@ import 'package:saber/data/tools/eraser.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/pencil.dart';
+import 'package:saber/data/tools/tape.dart';
 import 'package:saber/i18n/strings.g.dart';
 
 /// A compact row of color swatches shown inline in the toolbar,
@@ -251,12 +252,14 @@ abstract final class WidthPresets {
     'pen': [2, 5, 10],
     'pencil': [2, 5, 9],
     'highlighter': [30, 50, 80],
+    'tape': [15, 30, 50],
   };
 
   /// The key used to store [pen]'s presets.
   /// The fountain pen, ballpoint pen and shape pen share their presets.
   static String keyOf(Pen pen) => switch (pen) {
     Highlighter() => 'highlighter',
+    Tape() => 'tape',
     Pencil() => 'pencil',
     _ => 'pen',
   };

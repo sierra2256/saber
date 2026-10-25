@@ -317,6 +317,11 @@ class Translations$editor$en {
 	late final Translations$editor$colors$en colors = Translations$editor$colors$en.internal(_root);
 	late final Translations$editor$imageOptions$en imageOptions = Translations$editor$imageOptions$en.internal(_root);
 	late final Translations$editor$selectionBar$en selectionBar = Translations$editor$selectionBar$en.internal(_root);
+	late final Translations$editor$elements$en elements = Translations$editor$elements$en.internal(_root);
+
+	/// en: 'Paste again'
+	String get pasteAgain => 'Paste again';
+
 	late final Translations$editor$menu$en menu = Translations$editor$menu$en.internal(_root);
 	late final Translations$editor$readOnlyBanner$en readOnlyBanner = Translations$editor$readOnlyBanner$en.internal(_root);
 	late final Translations$editor$versionTooNew$en versionTooNew = Translations$editor$versionTooNew$en.internal(_root);
@@ -1124,6 +1129,9 @@ class Translations$editor$pens$en {
 
 	/// en: 'Laser pointer'
 	String get laserPointer => 'Laser pointer';
+
+	/// en: 'Tape'
+	String get tape => 'Tape';
 }
 
 // Path: editor.penOptions
@@ -1304,6 +1312,30 @@ class Translations$editor$selectionBar$en {
 
 	/// en: 'Duplicate'
 	String get duplicate => 'Duplicate';
+
+	/// en: 'Save to elements'
+	String get saveAsElement => 'Save to elements';
+}
+
+// Path: editor.elements
+class Translations$editor$elements$en {
+	Translations$editor$elements$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Elements'
+	String get elements => 'Elements';
+
+	/// en: 'Lasso something and save it to add it here'
+	String get empty => 'Lasso something and save it to add it here';
+
+	/// en: 'Edit elements'
+	String get edit => 'Edit elements';
+
+	/// en: 'Saved to elements'
+	String get saved => 'Saved to elements';
 }
 
 // Path: editor.menu

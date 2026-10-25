@@ -15,6 +15,7 @@ import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/tools/selection_transform.dart';
 import 'package:saber/data/tools/shape_pen.dart';
+import 'package:saber/data/tools/tape.dart';
 
 class CanvasPainter extends CustomPainter {
   const new({
@@ -52,6 +53,7 @@ class CanvasPainter extends CustomPainter {
 
     _drawHighlighterStrokes(canvas, canvasRect);
     _drawNonHighlighterStrokes(canvas);
+    _drawTapes(canvas);
     for (final stroke in laserStrokes) _drawLaserStroke(canvas, stroke);
     _drawCurrentStroke(canvas);
     _drawDetectedShape(canvas);
@@ -110,6 +112,7 @@ class CanvasPainter extends CustomPainter {
 
     for (final stroke in strokes) {
       if (stroke.toolId == .highlighter) continue;
+      if (stroke.toolId == .tape) continue;
 
       var color = stroke.color.withInversion(invert);
       if (currentSelection?.strokes.contains(stroke) ?? false) {
@@ -150,6 +153,24 @@ class CanvasPainter extends CustomPainter {
       } else {
         canvas.drawPath(_selectPath(stroke), paint);
       }
+    }
+  }
+
+  /// Tape is drawn on top of everything else so it covers the page.
+  void _drawTapes(Canvas canvas) {
+    final paint = Paint();
+    for (final stroke in strokes) {
+      if (stroke.toolId != .tape) continue;
+
+      var color = stroke.color.withInversion(invert);
+      if (page.revealedTapes.contains(stroke)) {
+        color = color.withAlpha(Tape.revealedAlpha);
+      }
+      if (currentSelection?.strokes.contains(stroke) ?? false) {
+        color = Color.lerp(color, primaryColor, 0.5)!;
+      }
+      paint.color = color;
+      canvas.drawPath(_selectPath(stroke), paint);
     }
   }
 

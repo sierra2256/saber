@@ -358,6 +358,14 @@ class Stows {
       FavoritePen.fromJson(Map<String, dynamic>.from(pen as Map)),
   ];
 
+  /// Saved lasso selections that can be inserted into any note,
+  /// encoded with [CanvasElement.encode].
+  final savedElements = PlainStow(
+    'savedElements',
+    <String>[],
+    volatile: !_isOnMainIsolate,
+  );
+
   final lastBackgroundPattern = PlainStow(
     'lastBackgroundPattern',
     CanvasBackgroundPattern.none,

@@ -28,7 +28,9 @@ import 'package:saber/components/theming/saber_theme.dart';
 import 'package:saber/components/toolbar/color_bar.dart';
 import 'package:saber/components/toolbar/editor_bottom_sheet.dart';
 import 'package:saber/components/toolbar/editor_page_manager.dart';
+import 'package:saber/components/toolbar/elements_bar.dart';
 import 'package:saber/components/toolbar/toolbar.dart';
+import 'package:saber/data/editor/canvas_element.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/editor_history.dart';
@@ -47,12 +49,28 @@ import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/tools/selection_transform.dart';
 import 'package:saber/data/tools/shape_pen.dart';
+import 'package:saber/data/tools/tape.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/home/whiteboard.dart';
 import 'package:sbn/change.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
 typedef _PhotoInfo = ({Uint8List bytes, String extension});
+
+/// The last thing that was pasted, so it can be pasted again.
+sealed class _LastPaste;
+
+class _PhotosPaste extends _LastPaste {
+  new(this.photoInfos);
+  final List<_PhotoInfo> photoInfos;
+}
+
+class _ElementPaste extends _LastPaste {
+  new(this.element, this.pageIndex, this.center);
+  final CanvasElement element;
+  final int pageIndex;
+  final Offset center;
+}
 
 class Editor extends StatefulWidget {
   new({super.key, String? path, this.customTitle, this.pdfPath})
@@ -151,6 +169,8 @@ class EditorState extends State<Editor> {
         return Tool.textEditing;
       case .laserPointer:
         return LaserPointer.currentLaserPointer;
+      case .tape:
+        return Tape.currentTape;
     }
   }();
   Tool get currentTool => _currentTool;
@@ -686,7 +706,18 @@ class EditorState extends State<Editor> {
         if (newStroke == null) return;
         if (newStroke.isEmpty) return;
 
-        if (stows.autoStraightenLines.value &&
+        if (currentTool is Tape) {
+          if (Tape.isTap(newStroke)) {
+            // Tapping tape reveals (or hides) what's underneath
+            shouldSave = false;
+            final position = newStroke.lowQualityPath.getBounds().center;
+            final tape = Tape.tapeAt(page, position);
+            if (tape != null) Tape.toggleRevealed(page, tape);
+            return;
+          }
+          // Tape is always straight
+          newStroke.convertToLine();
+        } else if (stows.autoStraightenLines.value &&
             currentTool is! ShapePen &&
             newStroke.isStraightLine()) {
           newStroke.convertToLine();
@@ -1236,7 +1267,12 @@ class EditorState extends State<Editor> {
   /// Returns the number of photos picked.
   ///
   /// If [photoInfos] is provided, it will be used instead of the file picker.
-  Future<int> _pickPhotos([List<_PhotoInfo>? photoInfos]) async {
+  ///
+  /// The images are shifted by [offset], e.g. when pasting again.
+  Future<int> _pickPhotos([
+    List<_PhotoInfo>? photoInfos,
+    Offset offset = .zero,
+  ]) async {
     if (coreInfo.readOnly) return 0;
 
     final currentPageIndex = this.currentPageIndex;
@@ -1276,6 +1312,11 @@ class EditorState extends State<Editor> {
             assetCache: coreInfo.assetCache,
           ),
     ];
+    if (offset != .zero) {
+      for (final image in images) {
+        image.dstRect = image.dstRect.shift(offset);
+      }
+    }
 
     history.recordChange(
       EditorHistoryItem(
@@ -1447,7 +1488,140 @@ class EditorState extends State<Editor> {
       await Future.delayed(const Duration(milliseconds: 50));
     }
 
-    await _pickPhotos(photoInfos);
+    if (await _pickPhotos(photoInfos) > 0) {
+      _setLastPaste(_PhotosPaste(photoInfos));
+    }
+  }
+
+  _LastPaste? _lastPaste;
+
+  /// How many times [_lastPaste] has been pasted again,
+  /// used to offset each copy so they don't overlap.
+  var _pasteAgainCount = 0;
+
+  void _setLastPaste(_LastPaste lastPaste) {
+    final hadLastPaste = _lastPaste != null;
+    _lastPaste = lastPaste;
+    _pasteAgainCount = 0;
+    // show the paste again button
+    if (!hadLastPaste && mounted) setState(() {});
+  }
+
+  /// Repeats the last paste (images or an element),
+  /// offset a little from the previous copy.
+  void pasteAgain() {
+    if (coreInfo.readOnly) return;
+    final lastPaste = _lastPaste;
+    if (lastPaste == null) return;
+
+    _pasteAgainCount++;
+    final offset = const Offset(20, 20) * _pasteAgainCount.toDouble();
+    switch (lastPaste) {
+      case _PhotosPaste(:final photoInfos):
+        _pickPhotos(photoInfos, offset);
+      case _ElementPaste(:final element, :final pageIndex, :final center):
+        if (pageIndex >= coreInfo.pages.length) return;
+        _insertStrokes(
+          element.instantiate(
+            page: coreInfo.pages[pageIndex],
+            pageIndex: pageIndex,
+            center: center + offset,
+          ),
+          pageIndex,
+        );
+    }
+    setState(() {});
+  }
+
+  /// Saves the strokes in the current selection as a [CanvasElement],
+  /// so they can be inserted into any note.
+  void saveSelectionAsElement() {
+    final select = Select.currentSelect;
+    if (!select.doneSelecting || select.selectResult.strokes.isEmpty) return;
+
+    final element = CanvasElement.fromStrokes(select.selectResult.strokes);
+    stows.savedElements.value = [
+      ...stows.savedElements.value,
+      element.encode(),
+    ];
+    ScaffoldMessenger.maybeOf(context)
+        ?.showSnackBar(SnackBar(content: Text(t.editor.elements.saved)));
+  }
+
+  /// Inserts [element] at [globalPosition], or in the middle of the
+  /// visible part of the current page if [globalPosition] is null.
+  void insertElement(CanvasElement element, {Offset? globalPosition}) {
+    if (coreInfo.readOnly) return;
+
+    final int pageIndex;
+    final Offset center;
+    if (globalPosition != null) {
+      final dropPageIndex = onWhichPageIsFocalPoint(globalPosition);
+      if (dropPageIndex == null) return;
+      pageIndex = dropPageIndex;
+      center = coreInfo.pages[pageIndex].renderBox!.globalToLocal(
+        globalPosition,
+      );
+    } else {
+      pageIndex = currentPageIndex;
+      final page = coreInfo.pages[pageIndex];
+      final editorBox = context.findRenderObject() as RenderBox?;
+      final screenCenter = editorBox?.localToGlobal(
+        editorBox.size.center(Offset.zero),
+      );
+      final pageCenter = page.size.center(Offset.zero);
+      final visibleCenter = screenCenter != null && page.renderBox != null
+          ? page.renderBox!.globalToLocal(screenCenter)
+          : pageCenter;
+      center = (Offset.zero & page.size).contains(visibleCenter)
+          ? visibleCenter
+          : pageCenter;
+    }
+
+    createPage(pageIndex);
+    _insertStrokes(
+      element.instantiate(
+        page: coreInfo.pages[pageIndex],
+        pageIndex: pageIndex,
+        center: center,
+      ),
+      pageIndex,
+    );
+    _setLastPaste(_ElementPaste(element, pageIndex, center));
+    setState(() {});
+  }
+
+  /// Adds [strokes] to the page and selects them so they can be moved.
+  void _insertStrokes(List<Stroke> strokes, int pageIndex) {
+    if (strokes.isEmpty) return;
+    createPage(pageIndex);
+    final page = coreInfo.pages[pageIndex];
+    for (final stroke in strokes) {
+      page.insertStroke(stroke);
+    }
+    history.recordChange(
+      EditorHistoryItem(
+        type: .draw,
+        pageIndex: pageIndex,
+        strokes: strokes,
+        images: [],
+      ),
+    );
+
+    // select the new strokes
+    currentTool = Select.currentSelect;
+    Select.currentSelect
+      ..selectResult = SelectResult(
+        pageIndex: pageIndex,
+        strokes: List.of(strokes),
+        images: [],
+        path: Path()
+          ..addRect(CanvasElement.boundsOf(strokes).inflate(Select.padding)),
+      )
+      ..doneSelecting = true;
+
+    page.redrawStrokes();
+    autosaveAfterDelay();
   }
 
   Future exportAsPdf(BuildContext context) async {
@@ -1597,6 +1771,8 @@ class EditorState extends State<Editor> {
 
             if (tool is Highlighter) {
               Highlighter.currentHighlighter = tool;
+            } else if (tool is Tape) {
+              Tape.currentTape = tool;
             } else if (tool is Pencil) {
               Pencil.currentPencil = tool;
             } else if (tool is Pen) {
@@ -1745,6 +1921,9 @@ class EditorState extends State<Editor> {
           },
           pickPhoto: _pickPhotos,
           paste: paste,
+          pasteAgain: _lastPaste == null ? null : pasteAgain,
+          insertElement: insertElement,
+          saveSelectionAsElement: saveSelectionAsElement,
           exportAsSba: exportAsSba,
           exportAsPdf: exportAsPdf,
           exportAsPng: exportAsPng,
@@ -1824,7 +2003,21 @@ class EditorState extends State<Editor> {
         Expanded(
           child: Stack(
             children: [
-              Positioned.fill(child: canvas),
+              Positioned.fill(
+                // elements can be dragged from the elements bar onto a page
+                child: DragTarget<CanvasElement>(
+                  onAcceptWithDetails: (details) => insertElement(
+                    details.data,
+                    globalPosition:
+                        details.offset +
+                        const Offset(
+                          ElementsBar.previewSize / 2,
+                          ElementsBar.previewSize / 2,
+                        ),
+                  ),
+                  builder: (context, _, _) => canvas,
+                ),
+              ),
               // The toolbar and page sidebar float over the canvas,
               // and the sidebar is placed next to the toolbar.
               Positioned.fill(
