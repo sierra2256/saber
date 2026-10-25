@@ -7,6 +7,7 @@ import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pencil.dart';
+import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/data/tools/tape.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:sbn/tool_id.dart';
@@ -75,6 +76,33 @@ class Pen extends Tool {
     assert(currentPen is! Pencil, 'Use Pencil.currentPencil instead');
     assert(currentPen is! Tape, 'Use Tape.currentTape instead');
     _currentPen = currentPen;
+  }
+
+  /// Returns the current pen of the type [toolId]
+  /// (e.g. [Highlighter.currentHighlighter]),
+  /// changing [currentPen] to that type if needed.
+  factory ofType(ToolId toolId) {
+    switch (toolId) {
+      case .highlighter:
+        return Highlighter.currentHighlighter;
+      case .pencil:
+        return Pencil.currentPencil;
+      case .tape:
+        return Tape.currentTape;
+      case .shapePen:
+        if (currentPen is! ShapePen) currentPen = ShapePen();
+        return currentPen;
+      case .ballpointPen:
+        if (currentPen.toolId != .ballpointPen) {
+          currentPen = Pen.ballpointPen();
+        }
+        return currentPen;
+      default:
+        if (currentPen.toolId != .fountainPen) {
+          currentPen = Pen.fountainPen();
+        }
+        return currentPen;
+    }
   }
 
   void onDragStart(

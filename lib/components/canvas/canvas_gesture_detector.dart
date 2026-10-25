@@ -59,7 +59,11 @@ class CanvasGestureDetector extends StatefulWidget {
   updatePointerData;
   final VoidCallback onHovering;
   final VoidCallback onHoveringEnd;
-  final ValueChanged<bool> onStylusButtonChanged;
+
+  /// Called when the stylus side button is pressed or released,
+  /// with the stylus's position (in global coordinates) and the time.
+  final void Function(bool pressed, Offset position, Duration timeStamp)
+  onStylusButtonChanged;
 
   /// Undoes the last change, returning false if there was nothing to undo.
   final bool Function() undo;
@@ -535,7 +539,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
         event.buttons & kSecondaryButton != 0 || event.kind == .invertedStylus;
     if (stylusButtonWasPressed != pressed) {
       stylusButtonWasPressed = pressed;
-      widget.onStylusButtonChanged(pressed);
+      widget.onStylusButtonChanged(pressed, event.position, event.timeStamp);
     }
   }
 
@@ -544,7 +548,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     widget.updatePointerData(event.kind, null);
     if (stylusButtonWasPressed) {
       stylusButtonWasPressed = false;
-      widget.onStylusButtonChanged(false);
+      widget.onStylusButtonChanged(false, event.position, event.timeStamp);
     }
   }
 
