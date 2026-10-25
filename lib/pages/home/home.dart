@@ -2,7 +2,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:saber/components/home/sentry_consent_dialog.dart';
 import 'package:saber/components/navbar/responsive_navbar.dart';
-import 'package:saber/components/settings/update_manager.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/pages/home/browse.dart';
 import 'package:saber/pages/home/recent_notes.dart';
@@ -41,7 +40,6 @@ class _HomePageState extends State<HomePage> {
   void _showDialogs() async {
     await null; // initState must be completed before using context
     if (!mounted) return;
-    UpdateManager.showUpdateDialog(context);
     SentryConsentDialog.showIfNeeded(context);
   }
 
