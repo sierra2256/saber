@@ -394,20 +394,14 @@ class EditorState extends State<Editor> {
           coreInfo.pages.insert(item.pageIndex, item.page!);
 
           // fix the page indices of all pages after this one
-          for (int i = item.pageIndex + 1; i < coreInfo.pages.length; ++i) {
-            final page = coreInfo.pages[i];
-            page.updatePageIndex(i);
-          }
+          _updatePageIndices(item.pageIndex);
 
         case .insertPage:
           // remove the page at the given index
           coreInfo.pages.removeAt(item.pageIndex);
 
           // fix the page indices of all pages after this one
-          for (int i = item.pageIndex; i < coreInfo.pages.length; ++i) {
-            final page = coreInfo.pages[i];
-            page.updatePageIndex(i);
-          }
+          _updatePageIndices(item.pageIndex);
 
         case .move:
           for (final stroke in item.strokes) {
@@ -937,7 +931,9 @@ class EditorState extends State<Editor> {
       }
       autosaveAfterDelay();
     });
-    quill.focusNode.addListener(_onQuillFocusChange);
+    quill.focusNode
+      ..removeListener(_onQuillFocusChange)
+      ..addListener(_onQuillFocusChange);
   }
 
   void _onQuillFocusChange() {
@@ -1798,16 +1794,8 @@ class EditorState extends State<Editor> {
               transformationController: _transformationController,
             );
           }),
-          showPages: () {
-            showDialog(
-              context: context,
-              builder: (context) => AdaptiveAlertDialog(
-                title: Text(t.editor.pages),
-                content: pageManager(context),
-                actions: const [],
-              ),
-            );
-          },
+          showingPages: showPageSidebar,
+          showPages: () => _setPageSidebarShown(!showPageSidebar),
           showNoteSettings: () {
             showModalBottomSheet(
               context: context,
@@ -1822,6 +1810,13 @@ class EditorState extends State<Editor> {
       ),
     );
 
+    // The toolbar already avoids the system UI on its side
+    final pageSidebar = SafeArea(
+      top: stows.editorToolbarAlignment.value != AxisDirection.up,
+      bottom: stows.editorToolbarAlignment.value != AxisDirection.down,
+      child: _buildPageSidebar(context),
+    );
+
     // The toolbar floats over the canvas so the page stays visible
     // around (and scrolls underneath) the toolbar, like GoodNotes.
     final Widget body = Column(
@@ -1830,32 +1825,40 @@ class EditorState extends State<Editor> {
           child: Stack(
             children: [
               Positioned.fill(child: canvas),
-              switch (stows.editorToolbarAlignment.value) {
-                AxisDirection.up => Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: toolbar,
-                ),
-                AxisDirection.down => Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: toolbar,
-                ),
-                AxisDirection.left => Positioned(
-                  top: 0,
-                  bottom: 0,
-                  left: 0,
-                  child: toolbar,
-                ),
-                AxisDirection.right => Positioned(
-                  top: 0,
-                  bottom: 0,
-                  right: 0,
-                  child: toolbar,
-                ),
-              },
+              // The toolbar and page sidebar float over the canvas,
+              // and the sidebar is placed next to the toolbar.
+              Positioned.fill(
+                child: switch (stows.editorToolbarAlignment.value) {
+                  AxisDirection.up => Column(
+                    crossAxisAlignment: .stretch,
+                    children: [
+                      toolbar,
+                      Expanded(child: pageSidebar),
+                    ],
+                  ),
+                  AxisDirection.down => Column(
+                    crossAxisAlignment: .stretch,
+                    children: [
+                      Expanded(child: pageSidebar),
+                      toolbar,
+                    ],
+                  ),
+                  AxisDirection.left => Row(
+                    crossAxisAlignment: .stretch,
+                    children: [
+                      toolbar,
+                      Expanded(child: pageSidebar),
+                    ],
+                  ),
+                  AxisDirection.right => Row(
+                    crossAxisAlignment: .stretch,
+                    children: [
+                      Expanded(child: pageSidebar),
+                      toolbar,
+                    ],
+                  ),
+                },
+              ),
             ],
           ),
         ),
@@ -2041,10 +2044,54 @@ class EditorState extends State<Editor> {
     );
   }
 
+  /// Whether the page thumbnail sidebar is shown.
+  var showPageSidebar = false;
+
+  /// The page thumbnail sidebar, which slides in from the left
+  /// (or next to the toolbar if the toolbar is on the left).
+  Widget _buildPageSidebar(BuildContext context) {
+    return Align(
+      alignment: .centerLeft,
+      child: Padding(
+        padding: const .all(8),
+        child: AnimatedSlide(
+          offset: showPageSidebar ? Offset.zero : const Offset(-1.2, 0),
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          onEnd: () => setState(() => _pageSidebarAnimating = false),
+          child: Offstage(
+            offstage: !showPageSidebar && !_pageSidebarAnimating,
+            child: pageManager(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The sidebar is kept offstage when hidden, except while it's sliding out.
+  var _pageSidebarAnimating = false;
+
+  void _setPageSidebarShown(bool shown) => setState(() {
+    if (showPageSidebar == shown) return;
+    showPageSidebar = shown;
+    _pageSidebarAnimating = true;
+  });
+
+  /// Updates the page index of each page's contents,
+  /// starting from [startIndex], after pages were inserted or removed.
+  void _updatePageIndices([int startIndex = 0]) {
+    for (int i = startIndex; i < coreInfo.pages.length; i++) {
+      final page = coreInfo.pages[i];
+      page.updatePageIndex(i);
+      listenToQuillChanges(page.quill, i);
+    }
+  }
+
   Widget pageManager(BuildContext context) {
     return EditorPageManager(
       coreInfo: coreInfo,
-      currentPageIndex: currentPageIndex,
+      getCurrentPageIndex: () => currentPageIndex,
+      onClose: () => _setPageSidebarShown(false),
       redrawAndSave: () => setState(() {
         if (coreInfo.readOnly) return;
         autosaveAfterDelay();
@@ -2072,11 +2119,11 @@ class EditorState extends State<Editor> {
           backgroundImage: page.backgroundImage?.copy()?..pageIndex += 1,
         );
         coreInfo.pages.insert(pageIndex + 1, newPage);
-        listenToQuillChanges(newPage.quill, pageIndex + 1);
+        _updatePageIndices(pageIndex + 1);
         history.recordChange(
           EditorHistoryItem(
             type: .insertPage,
-            pageIndex: pageIndex,
+            pageIndex: pageIndex + 1,
             strokes: const [],
             images: const [],
             page: newPage,
@@ -2089,6 +2136,7 @@ class EditorState extends State<Editor> {
         if (coreInfo.readOnly) return;
         final page = coreInfo.pages.removeAt(pageIndex);
         createPage(pageIndex - 1);
+        _updatePageIndices(pageIndex);
         history.recordChange(
           EditorHistoryItem(
             type: .deletePage,
@@ -2108,7 +2156,7 @@ class EditorState extends State<Editor> {
     if (coreInfo.readOnly) return;
     final page = EditorPage();
     coreInfo.pages.insert(pageIndex + 1, page);
-    listenToQuillChanges(page.quill, pageIndex + 1);
+    _updatePageIndices(pageIndex + 1);
     history.recordChange(
       EditorHistoryItem(
         type: .insertPage,

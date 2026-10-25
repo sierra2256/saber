@@ -56,6 +56,7 @@ class Toolbar extends StatefulWidget {
     this.leading,
     required this.insertPage,
     required this.showPages,
+    this.showingPages = false,
     required this.showNoteSettings,
     this.rename,
   });
@@ -93,6 +94,9 @@ class Toolbar extends StatefulWidget {
 
   final VoidCallback insertPage;
   final VoidCallback showPages;
+
+  /// Whether the page sidebar is shown.
+  final bool showingPages;
   final VoidCallback showNoteSettings;
 
   /// Shown in the overflow menu when the title doesn't fit in the toolbar.
@@ -570,6 +574,7 @@ class _ToolbarState extends State<Toolbar> {
                 children: [
                   ToolbarIconButton(
                     tooltip: t.editor.pages,
+                    selected: widget.showingPages,
                     onPressed: widget.showPages,
                     padding: buttonPadding,
                     child: const AdaptiveIcon(
