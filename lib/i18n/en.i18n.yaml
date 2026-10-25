@@ -281,6 +281,7 @@ update:
 editor:
   toolbar:
     toggleColors: Toggle colors (Ctrl C)
+    insert: Insert
     select: Select
     toggleEraser: Toggle eraser (Ctrl E)
     photo: Images
@@ -432,6 +433,7 @@ handwriting:
     copy: Copy
     copied: Copied to clipboard
     replace: Replace with text
+  straighten: Straighten handwriting
   search:
     search: Search
     hint: Search notes and handwriting

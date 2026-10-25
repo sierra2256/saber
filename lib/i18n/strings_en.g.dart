@@ -350,6 +350,10 @@ class Translations$handwriting$en {
 	// Translations
 	late final Translations$handwriting$setup$en setup = Translations$handwriting$setup$en.internal(_root);
 	late final Translations$handwriting$convert$en convert = Translations$handwriting$convert$en.internal(_root);
+
+	/// en: 'Straighten handwriting'
+	String get straighten => 'Straighten handwriting';
+
 	late final Translations$handwriting$search$en search = Translations$handwriting$search$en.internal(_root);
 }
 
@@ -1105,6 +1109,9 @@ class Translations$editor$toolbar$en {
 
 	/// en: 'Toggle colors (Ctrl C)'
 	String get toggleColors => 'Toggle colors (Ctrl C)';
+
+	/// en: 'Insert'
+	String get insert => 'Insert';
 
 	/// en: 'Select'
 	String get select => 'Select';

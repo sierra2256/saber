@@ -270,6 +270,7 @@ update:
 editor:
   toolbar:
     toggleColors: Farben umschalten (Strg + C)
+    insert: Einfügen
     select: Auswählen
     toggleEraser: Radierer umschalten (Strg + E)
     photo: Foto
@@ -375,3 +376,5 @@ editor:
   pages: Seiten
   untitled: Unbenannt
   needsToSaveBeforeExiting: Deine Änderungen werden noch gespeichert… Warte einen Moment, um Datenverluste zu vermeiden.
+handwriting:
+  straighten: Handschrift begradigen
