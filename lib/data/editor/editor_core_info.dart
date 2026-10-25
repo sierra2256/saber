@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:archive/archive_io.dart';
 import 'package:bson/bson.dart';
@@ -469,7 +470,11 @@ class EditorCoreInfo {
 
   /// Returns the json map and a list of assets.
   /// Assets are stored in separate files.
-  (Map<String, dynamic> json, OrderedAssetCache) toJson() {
+  ///
+  /// See [Stroke.toJson] for [packStrokePoints].
+  (Map<String, dynamic> json, OrderedAssetCache) toJson({
+    bool packStrokePoints = false,
+  }) {
     /// This will be populated in various [toJson] methods.
     final OrderedAssetCache assets = OrderedAssetCache();
 
@@ -480,7 +485,12 @@ class EditorCoreInfo {
       'p': backgroundPattern.name,
       'l': lineHeight,
       'lt': lineThickness,
-      'z': pages.map((EditorPage page) => page.toJson(assets)).toList(),
+      'z': pages
+          .map(
+            (EditorPage page) =>
+                page.toJson(assets, packStrokePoints: packStrokePoints),
+          )
+          .toList(),
       'c': initialPageIndex,
     };
 
@@ -525,6 +535,41 @@ class EditorCoreInfo {
     final (json, assets) = toJson();
     final bson = BsonCodec.serialize(json);
     return (bson.byteList, assets);
+  }
+
+  /// Notes with more points than this are encoded on another isolate
+  /// by [saveToBinaryInBackground], to avoid freezing the app.
+  static const backgroundSaveThreshold = 20000;
+
+  /// Like [saveToBinary], but large notes are encoded on another isolate.
+  ///
+  /// The note is still read on this isolate (which is fast),
+  /// so it can be changed as soon as this function is called.
+  Future<(Uint8List bson, OrderedAssetCache assets)> saveToBinaryInBackground({
+    required int? currentPageIndex,
+  }) async {
+    var numPoints = 0;
+    for (final page in pages) {
+      for (final stroke in page.strokes) {
+        numPoints += stroke.length;
+      }
+    }
+    if (numPoints < backgroundSaveThreshold) {
+      return saveToBinary(currentPageIndex: currentPageIndex);
+    }
+
+    initialPageIndex = currentPageIndex ?? initialPageIndex;
+    final (json, assets) = toJson(packStrokePoints: true);
+    final bson = await Isolate.run(() => encodePackedJson(json));
+    return (bson, assets);
+  }
+
+  /// Encodes json from [toJson] with `packStrokePoints: true`,
+  /// giving the same result as [saveToBinary].
+  @visibleForTesting
+  static Uint8List encodePackedJson(Map<String, dynamic> json) {
+    PackedPoints.unpackJson(json);
+    return BsonCodec.serialize(json).byteList;
   }
 
   void dispose() {

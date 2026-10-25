@@ -1102,6 +1102,8 @@ class EditorState extends State<Editor> {
   }
 
   void autosaveAfterDelay() {
+    // [saveToFile] saves again afterwards if anything changed meanwhile
+    if (savingState.value == .saving) return;
     if (history.isCurrentStateSaved) return cancelAutosaveAndMarkSaved();
 
     late final void Function() callback;
@@ -1155,11 +1157,15 @@ class EditorState extends State<Editor> {
     await _renameFileNow();
 
     final filePath = coreInfo.filePath + Editor.extension;
+    // The note can change while it's being saved,
+    // so remember which change is being saved.
+    final savedChange = history.lastChange;
     final Uint8List bson;
     final OrderedAssetCache assets;
     coreInfo.assetCache.allowRemovingAssets = false;
     try {
-      (bson, assets) = coreInfo.saveToBinary(
+      // large notes are encoded on another isolate to avoid freezing
+      (bson, assets) = await coreInfo.saveToBinaryInBackground(
         currentPageIndex: currentPageIndex,
       );
     } finally {
@@ -1180,8 +1186,14 @@ class EditorState extends State<Editor> {
               ),
         FileManager.removeUnusedAssets(filePath, numAssets: assets.length),
       ]);
-      savingState.value = .saved;
-      history.markLastChangeAsSaved();
+      history.markChangeAsSaved(savedChange);
+      if (history.isCurrentStateSaved) {
+        savingState.value = .saved;
+      } else {
+        // something changed while saving, so save again later
+        savingState.value = .waitingToSave;
+        autosaveAfterDelay();
+      }
     } catch (e, st) {
       log.severe('Failed to save file: $e', e, st);
       savingState.value = .waitingToSave;
@@ -1191,6 +1203,18 @@ class EditorState extends State<Editor> {
 
     if (!mounted) return;
     final page = coreInfo.pages.first;
+
+    // Only regenerate the thumbnail if the first page changed
+    final thumbnailHash = Object.hash(
+      page.contentHash,
+      coreInfo.backgroundPattern,
+      coreInfo.backgroundColor,
+      coreInfo.lineHeight,
+      coreInfo.lineThickness,
+    );
+    if (thumbnailHash == _lastThumbnailHash) return;
+    _lastThumbnailHash = thumbnailHash;
+
     final previewHeight = page.previewHeight(lineHeight: coreInfo.lineHeight);
     final thumbnailSize = Size(720, 720 * previewHeight / page.size.width);
     final thumbnail = await EditorExporter.screenshotPage(
@@ -1210,6 +1234,9 @@ class EditorState extends State<Editor> {
       awaitWrite: true,
     );
   }
+
+  /// See [saveToFile].
+  int? _lastThumbnailHash;
 
   late final _filenameFormKey = GlobalKey<FormState>();
   late final filenameTextEditingController = TextEditingController();

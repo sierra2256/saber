@@ -59,7 +59,7 @@ class CircleStroke extends Stroke {
     );
   }
   @override
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toJson({bool packPoints = false}) {
     return {
       'shape': 'circle',
       'i': pageIndex,
@@ -154,6 +154,9 @@ class CircleStroke extends Stroke {
       ..radius = radius * scale
       ..markPolygonNeedsUpdating();
   }
+
+  @override
+  int get contentHash => Object.hash(super.contentHash, center, radius);
 
   @override
   CircleStroke copy() => CircleStroke(

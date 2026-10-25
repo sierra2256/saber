@@ -1,5 +1,7 @@
 import 'dart:math';
+import 'dart:typed_data';
 
+import 'package:bson/bson.dart';
 import 'package:collection/collection.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:flutter/material.dart';
@@ -156,14 +158,20 @@ class Stroke {
       toolId: toolId,
     )..points.addAll(points);
   }
-  Map<String, dynamic> toJson() {
+
+  /// If [packPoints] is true, the points are stored as [PackedPoints]
+  /// instead of a list of [BsonBinary]s, which is much cheaper to create
+  /// and to send to another isolate. See [PackedPoints.unpackJson].
+  Map<String, dynamic> toJson({bool packPoints = false}) {
     // these json keys should not be the same as the ones in [StrokeOptions.toJson]
+    final finitePoints = points.where((point) => point.isFinite);
     return {
       'shape': null,
-      'p': points
-          .where((point) => point.isFinite)
-          .map((PointVector point) => point.toBsonBinary())
-          .toList(),
+      'p': packPoints
+          ? PackedPoints.pack(finitePoints.toList())
+          : finitePoints
+                .map((PointVector point) => point.toBsonBinary())
+                .toList(),
       'i': pageIndex,
       'ty': toolId.id,
       'pe': pressureEnabled,
@@ -379,6 +387,18 @@ class Stroke {
     options.end.taperEnabled = false;
   }
 
+  /// A cheap hash of this stroke's appearance, used to tell whether
+  /// a page changed (e.g. to skip regenerating a note's thumbnail).
+  /// This is only stable within one run of the app.
+  int get contentHash => Object.hash(
+    toolId,
+    color,
+    options.size,
+    points.length,
+    points.firstOrNull,
+    points.lastOrNull,
+  );
+
   /// Returns a copy of this line (see [convertToLine])
   /// with new end points.
   Stroke copyAsLine(Offset start, Offset end) {
@@ -570,4 +590,60 @@ enum StrokeQuality(
 ) {
   low(4),
   high(1),
+}
+
+/// The points of a stroke packed into typed arrays, see [Stroke.toJson].
+///
+/// This is sent to another isolate when saving large notes,
+/// where it's converted to the normal format with [unpackJson].
+class PackedPoints {
+  const new _(this.coordinates, this.hasPressure);
+
+  factory pack(List<PointVector> points) {
+    final coordinates = Float32List(points.length * 3);
+    final hasPressure = Uint8List(points.length);
+    for (int i = 0; i < points.length; i++) {
+      final point = points[i];
+      coordinates[i * 3] = point.x;
+      coordinates[i * 3 + 1] = point.y;
+      if (point.pressure case final pressure?) {
+        coordinates[i * 3 + 2] = pressure;
+        hasPressure[i] = 1;
+      }
+    }
+    return PackedPoints._(coordinates, hasPressure);
+  }
+
+  /// x, y and pressure for each point.
+  final Float32List coordinates;
+
+  /// Whether each point has a pressure value.
+  final Uint8List hasPressure;
+
+  /// The points in the normal format, the same as
+  /// [PointExtensions.toBsonBinary].
+  List<BsonBinary> toBsonBinaries() => [
+    for (int i = 0; i < hasPressure.length; i++)
+      BsonBinary.from(
+        Float32List.fromList([
+          coordinates[i * 3],
+          coordinates[i * 3 + 1],
+          if (hasPressure[i] == 1) coordinates[i * 3 + 2],
+        ]).buffer.asUint8List(),
+      ),
+  ];
+
+  /// Replaces any [PackedPoints] in a note's json (from
+  /// [EditorCoreInfo.toJson] with `packStrokePoints: true`)
+  /// with the normal format.
+  static void unpackJson(Map<String, dynamic> noteJson) {
+    for (final page in noteJson['z'] as List) {
+      final strokes = (page as Map)['s'] as List?;
+      if (strokes == null) continue;
+      for (final stroke in strokes) {
+        final points = (stroke as Map)['p'];
+        if (points is PackedPoints) stroke['p'] = points.toBsonBinaries();
+      }
+    }
+  }
 }

@@ -176,17 +176,33 @@ class EditorPage extends ChangeNotifier implements HasSize {
     );
   }
 
-  Map<String, dynamic> toJson(OrderedAssetCache assets) => {
+  Map<String, dynamic> toJson(
+    OrderedAssetCache assets, {
+    bool packStrokePoints = false,
+  }) => {
     'w': size.width,
     'h': size.height,
     if (strokes.isNotEmpty)
-      's': strokes.map((stroke) => stroke.toJson()).toList(),
+      's': strokes
+          .map((stroke) => stroke.toJson(packPoints: packStrokePoints))
+          .toList(),
     if (images.isNotEmpty)
       'i': images.map((image) => image.toJson(assets)).toList(),
     if (!quill.controller.document.isEmpty())
       'q': quill.controller.document.toDelta().toJson(),
     if (backgroundImage != null) 'b': backgroundImage?.toJson(assets),
   };
+
+  /// A cheap hash of how this page looks, used to tell whether it changed,
+  /// e.g. to skip regenerating a note's thumbnail.
+  /// This is only stable within one run of the app.
+  int get contentHash => Object.hash(
+    size,
+    Object.hashAll(strokes.map((stroke) => stroke.contentHash)),
+    Object.hashAll(images.map((image) => Object.hash(image, image.dstRect))),
+    backgroundImage,
+    quill.controller.document.toPlainText(),
+  );
 
   /// Inserts a stroke, while keeping the strokes sorted by
   /// pen type and color.
