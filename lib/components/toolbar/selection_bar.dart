@@ -8,6 +8,7 @@ class SelectionBar extends StatelessWidget {
   final VoidCallback deleteSelection;
   final VoidCallback? saveSelectionAsElement;
   final VoidCallback? convertSelectionToText;
+  final VoidCallback? straightenSelection;
   final VoidCallback? copySelectionToOtherSide;
 
   const new({
@@ -16,6 +17,7 @@ class SelectionBar extends StatelessWidget {
     required this.deleteSelection,
     this.saveSelectionAsElement,
     this.convertSelectionToText,
+    this.straightenSelection,
     this.copySelectionToOtherSide,
   });
 
@@ -82,6 +84,17 @@ class SelectionBar extends StatelessWidget {
             ),
             tooltip: t.handwriting.convert.convertToText,
             icon: const Icon(Icons.text_snippet_outlined),
+          ),
+        if (straightenSelection != null)
+          IconButton(
+            onPressed: straightenSelection,
+            style: TextButton.styleFrom(
+              foregroundColor: ColorScheme.of(context).secondary,
+              backgroundColor: Colors.transparent,
+              shape: const CircleBorder(),
+            ),
+            tooltip: t.handwriting.straighten,
+            icon: const Icon(Icons.auto_fix_high),
           ),
       ],
     );

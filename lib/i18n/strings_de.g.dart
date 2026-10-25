@@ -44,6 +44,7 @@ class TranslationsDe extends Translations with BaseTranslations<AppLocale, Trans
 	@override late final _Translations$appInfo$de appInfo = _Translations$appInfo$de._(_root);
 	@override late final _Translations$update$de update = _Translations$update$de._(_root);
 	@override late final _Translations$editor$de editor = _Translations$editor$de._(_root);
+	@override late final _Translations$handwriting$de handwriting = _Translations$handwriting$de._(_root);
 }
 
 // Path: common
@@ -232,6 +233,16 @@ class _Translations$editor$de extends Translations$editor$en {
 	@override String get pages => 'Seiten';
 	@override String get untitled => 'Unbenannt';
 	@override String get needsToSaveBeforeExiting => 'Deine Änderungen werden noch gespeichert… Warte einen Moment, um Datenverluste zu vermeiden.';
+}
+
+// Path: handwriting
+class _Translations$handwriting$de extends Translations$handwriting$en {
+	_Translations$handwriting$de._(TranslationsDe root) : this._root = root, super.internal(root);
+
+	final TranslationsDe _root; // ignore: unused_field
+
+	// Translations
+	@override String get straighten => 'Handschrift begradigen';
 }
 
 // Path: home.tabs
@@ -672,6 +683,7 @@ class _Translations$editor$toolbar$de extends Translations$editor$toolbar$en {
 
 	// Translations
 	@override String get toggleColors => 'Farben umschalten (Strg + C)';
+	@override String get insert => 'Einfügen';
 	@override String get select => 'Auswählen';
 	@override String get toggleEraser => 'Radierer umschalten (Strg + E)';
 	@override String get photo => 'Foto';

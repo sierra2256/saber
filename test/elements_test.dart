@@ -104,9 +104,13 @@ void main() {
     state.saveSelectionAsElement();
     expect(stows.savedElements.value, hasLength(1));
 
-    // no paste again button until something is pasted
+    // no paste again in the insert menu until something is pasted
     await tester.pump();
-    expect(find.byTooltip('Paste again'), findsNothing);
+    await tester.tap(find.byTooltip('Insert'));
+    await tester.pumpAndSettle();
+    expect(find.text('Paste again'), findsNothing);
+    await tester.tap(find.byTooltip('Insert'));
+    await tester.pumpAndSettle();
 
     final element = CanvasElement.decode(stows.savedElements.value.single);
     state.insertElement(element);
@@ -117,8 +121,10 @@ void main() {
     expect(state.history.canUndo, isTrue);
 
     // paste again adds another offset copy
-    await tester.tap(find.byTooltip('Paste again'));
-    await tester.pump();
+    await tester.tap(find.byTooltip('Insert'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Paste again'));
+    await tester.pumpAndSettle();
     expect(page.strokes, hasLength(3));
     final again = select.selectResult.strokes.single;
     final insertedBounds = CanvasElement.boundsOf([inserted]);

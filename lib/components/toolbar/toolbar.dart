@@ -57,6 +57,7 @@ class Toolbar extends StatefulWidget {
     required this.deleteSelection,
     this.saveSelectionAsElement,
     this.convertSelectionToText,
+    this.straightenSelection,
     this.insertElement,
     this.pasteAgain,
     required this.exportAsSba,
@@ -105,6 +106,9 @@ class Toolbar extends StatefulWidget {
   /// or null if handwriting recognition isn't supported.
   final VoidCallback? convertSelectionToText;
 
+  /// Makes the selected handwriting neater.
+  final VoidCallback? straightenSelection;
+
   /// Inserts a saved element into the current page.
   final ValueChanged<CanvasElement>? insertElement;
 
@@ -147,7 +151,7 @@ class Toolbar extends StatefulWidget {
   @override
   State<Toolbar> createState() => _ToolbarState();
 
-  static const _buttonPaddingHorizontal = EdgeInsets.symmetric(horizontal: 2);
+  static const _buttonPaddingHorizontal = EdgeInsets.symmetric(horizontal: 1);
   static const _buttonPaddingVertical = EdgeInsets.symmetric(vertical: 6);
 }
 
@@ -318,6 +322,7 @@ class _ToolbarState extends State<Toolbar> {
                   deleteSelection: widget.deleteSelection,
                   saveSelectionAsElement: widget.saveSelectionAsElement,
                   convertSelectionToText: widget.convertSelectionToText,
+                  straightenSelection: widget.straightenSelection,
                   copySelectionToOtherSide: widget.copySelectionToOtherSide,
                 ),
               },
@@ -522,17 +527,6 @@ class _ToolbarState extends State<Toolbar> {
                     child: const FaIcon(Highlighter.highlighterIcon, size: 16),
                   ),
                   ToolbarIconButton(
-                    tooltip: t.editor.pens.tape,
-                    selected: widget.currentTool == Tape.currentTape,
-                    enabled: !widget.readOnly,
-                    onPressed: () {
-                      toolOptionsType.value = .hide;
-                      widget.setTool(Tape.currentTape);
-                    },
-                    padding: buttonPadding,
-                    child: const FaIcon(Tape.tapeIcon, size: 16),
-                  ),
-                  ToolbarIconButton(
                     tooltip: t.editor.toolbar.toggleEraser,
                     selected: widget.currentTool is Eraser,
                     enabled: !widget.readOnly,
@@ -576,39 +570,7 @@ class _ToolbarState extends State<Toolbar> {
                       cupertinoIcon: CupertinoIcons.text_cursor,
                     ),
                   ),
-                  ToolbarIconButton(
-                    tooltip: t.editor.toolbar.photo,
-                    enabled: !widget.readOnly,
-                    onPressed: widget.pickPhoto,
-                    padding: buttonPadding,
-                    child: const AdaptiveIcon(
-                      icon: Icons.photo,
-                      cupertinoIcon: CupertinoIcons.photo,
-                    ),
-                  ),
-                  if (widget.insertElement != null)
-                    ValueListenableBuilder(
-                      valueListenable: showElements,
-                      builder: (context, showElements, child) =>
-                          ToolbarIconButton(
-                            tooltip: t.editor.elements.elements,
-                            selected: showElements,
-                            enabled: !widget.readOnly,
-                            onPressed: () =>
-                                this.showElements.value = !showElements,
-                            padding: buttonPadding,
-                            child: child!,
-                          ),
-                      child: const Icon(Icons.interests_outlined),
-                    ),
-                  if (widget.pasteAgain != null)
-                    ToolbarIconButton(
-                      tooltip: t.editor.pasteAgain,
-                      enabled: !widget.readOnly,
-                      onPressed: widget.pasteAgain,
-                      padding: buttonPadding,
-                      child: const Icon(Icons.content_paste_go),
-                    ),
+                  _buildInsertMenu(buttonPadding),
                 ],
               ),
               if (currentColor != null && !widget.readOnly) ...[
@@ -642,12 +604,22 @@ class _ToolbarState extends State<Toolbar> {
                         pen: pen,
                         onChanged: () => setState(() {}),
                       ),
+                    if (widget.currentTool is Pen ||
+                        stows.favoritePens.value.isNotEmpty)
+                      FavoritePens(
+                        axis: toolbarAxis,
+                        currentTool: widget.currentTool,
+                        setTool: (tool) {
+                          toolOptionsType.value = .hide;
+                          widget.setTool(tool);
+                        },
+                        invert: invert,
+                        padding: buttonPadding,
+                      ),
                   ],
                 ),
-              ],
-              if (!widget.readOnly &&
-                  (widget.currentTool is Pen ||
-                      stows.favoritePens.value.isNotEmpty)) ...[
+              ] else if (!widget.readOnly &&
+                  stows.favoritePens.value.isNotEmpty) ...[
                 _ToolbarDivider(axis: toolbarAxis),
                 FavoritePens(
                   axis: toolbarAxis,
@@ -704,6 +676,67 @@ class _ToolbarState extends State<Toolbar> {
         _ => VerticalDirection.down,
       },
       children: bars,
+    );
+  }
+
+  /// Images, tape, elements and paste again share one button to save space.
+  Widget _buildInsertMenu(EdgeInsets buttonPadding) {
+    return ValueListenableBuilder(
+      valueListenable: showElements,
+      builder: (context, showingElements, _) => MenuAnchor(
+        menuChildren: [
+          MenuItemButton(
+            leadingIcon: const AdaptiveIcon(
+              icon: Icons.photo,
+              cupertinoIcon: CupertinoIcons.photo,
+            ),
+            onPressed: widget.readOnly ? null : widget.pickPhoto,
+            child: Text(t.editor.toolbar.photo),
+          ),
+          MenuItemButton(
+            leadingIcon: const FaIcon(Tape.tapeIcon, size: 16),
+            trailingIcon: widget.currentTool == Tape.currentTape
+                ? const Icon(Icons.check)
+                : null,
+            onPressed: widget.readOnly
+                ? null
+                : () {
+                    toolOptionsType.value = .hide;
+                    widget.setTool(Tape.currentTape);
+                  },
+            child: Text(t.editor.pens.tape),
+          ),
+          if (widget.insertElement != null)
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.interests_outlined),
+              trailingIcon: showingElements ? const Icon(Icons.check) : null,
+              onPressed: widget.readOnly
+                  ? null
+                  : () => showElements.value = !showingElements,
+              child: Text(t.editor.elements.elements),
+            ),
+          if (widget.pasteAgain != null)
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.content_paste_go),
+              onPressed: widget.readOnly ? null : widget.pasteAgain,
+              child: Text(t.editor.pasteAgain),
+            ),
+        ],
+        builder: (context, controller, _) => ToolbarIconButton(
+          tooltip: t.editor.toolbar.insert,
+          selected:
+              controller.isOpen ||
+              showingElements ||
+              widget.currentTool == Tape.currentTape,
+          enabled: !widget.readOnly,
+          onPressed: () =>
+              controller.isOpen ? controller.close() : controller.open(),
+          padding: buttonPadding,
+          child: widget.currentTool == Tape.currentTape
+              ? const FaIcon(Tape.tapeIcon, size: 16)
+              : const Icon(Icons.add_circle_outline),
+        ),
+      ),
     );
   }
 

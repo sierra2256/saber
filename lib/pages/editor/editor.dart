@@ -45,6 +45,7 @@ import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/handwriting/handwriting_recognizer.dart';
+import 'package:saber/data/handwriting/handwriting_straightener.dart';
 import 'package:saber/data/keybinding_group.dart';
 import 'package:saber/data/nextcloud/saber_syncer.dart';
 import 'package:saber/data/prefs.dart';
@@ -1712,6 +1713,50 @@ class EditorState extends State<Editor> {
     }
   }
 
+  /// Makes the handwriting in the current selection neater,
+  /// see [HandwritingStraightener].
+  void straightenSelection() {
+    if (coreInfo.readOnly) return;
+    final select = Select.currentSelect;
+    if (!select.isDoneSelectingFor(this)) return;
+    final selection = select.selectResult;
+    final changed = HandwritingStraightener.straighten(selection.strokes);
+    if (changed.isEmpty) return;
+
+    final page = coreInfo.pages[selection.pageIndex];
+    setState(() {
+      for (final MapEntry(key: oldStroke, value: newStroke)
+          in changed.entries) {
+        final index = page.strokes.indexOf(oldStroke);
+        if (index >= 0) page.strokes[index] = newStroke;
+      }
+      history.recordChange(
+        EditorHistoryItem(
+          type: .replaceStrokes,
+          pageIndex: selection.pageIndex,
+          strokes: changed.keys.toList(),
+          newStrokes: changed.values.toList(),
+          images: [],
+        ),
+      );
+
+      // Keep the straightened strokes selected, with the lasso
+      // replaced by a rectangle since the strokes moved.
+      final newStrokes = [
+        for (final stroke in selection.strokes) changed[stroke] ?? stroke,
+      ];
+      selection.strokes
+        ..clear()
+        ..addAll(newStrokes);
+      final bounds = SelectionHandle.boundsOf(selection);
+      if (bounds != null) {
+        selection.path = Path()..addRect(bounds.inflate(10));
+      }
+    });
+    page.redrawStrokes();
+    autosaveAfterDelay();
+  }
+
   /// Removes [strokes] and adds [text] to the end of the typed text
   /// on their page.
   ///
@@ -2133,6 +2178,7 @@ class EditorState extends State<Editor> {
           convertSelectionToText: HandwritingRecognizer.instance.isSupported
               ? convertSelectionToText
               : null,
+          straightenSelection: straightenSelection,
           exportAsSba: exportAsSba,
           exportAsPdf: exportAsPdf,
           exportAsPng: exportAsPng,
