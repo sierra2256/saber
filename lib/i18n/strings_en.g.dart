@@ -46,7 +46,9 @@ class Translations with BaseTranslations<AppLocale, Translations> {
 	late final Translations$appInfo$en appInfo = Translations$appInfo$en.internal(_root);
 	late final Translations$update$en update = Translations$update$en.internal(_root);
 	late final Translations$editor$en editor = Translations$editor$en.internal(_root);
+	late final Translations$quickMemo$en quickMemo = Translations$quickMemo$en.internal(_root);
 	late final Translations$handwriting$en handwriting = Translations$handwriting$en.internal(_root);
+	late final Translations$todos$en todos = Translations$todos$en.internal(_root);
 }
 
 // Path: common
@@ -324,6 +326,7 @@ class Translations$editor$en {
 	String get pasteAgain => 'Paste again';
 
 	late final Translations$editor$splitView$en splitView = Translations$editor$splitView$en.internal(_root);
+	late final Translations$editor$penMenu$en penMenu = Translations$editor$penMenu$en.internal(_root);
 	late final Translations$editor$zoomBox$en zoomBox = Translations$editor$zoomBox$en.internal(_root);
 	late final Translations$editor$menu$en menu = Translations$editor$menu$en.internal(_root);
 	late final Translations$editor$readOnlyBanner$en readOnlyBanner = Translations$editor$readOnlyBanner$en.internal(_root);
@@ -341,6 +344,21 @@ class Translations$editor$en {
 	String get needsToSaveBeforeExiting => 'Saving your changes… You can safely exit the editor when it\'s done';
 }
 
+// Path: quickMemo
+class Translations$quickMemo$en {
+	Translations$quickMemo$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Quick memo'
+	String get title => 'Quick memo';
+
+	/// en: 'Done'
+	String get done => 'Done';
+}
+
 // Path: handwriting
 class Translations$handwriting$en {
 	Translations$handwriting$en.internal(this._root);
@@ -355,6 +373,47 @@ class Translations$handwriting$en {
 	String get straighten => 'Straighten handwriting';
 
 	late final Translations$handwriting$search$en search = Translations$handwriting$search$en.internal(_root);
+}
+
+// Path: todos
+class Translations$todos$en {
+	Translations$todos$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'To-dos'
+	String get title => 'To-dos';
+
+	/// en: '(one) {1 open to-do} (other) {$n open to-dos}'
+	String openCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(n,
+		one: '1 open to-do',
+		other: '${n} open to-dos',
+	);
+
+	late final Translations$todos$filter$en filter = Translations$todos$filter$en.internal(_root);
+
+	/// en: 'No to-dos yet. In a note, tap the page with the to-do tool, or draw a small square with the shape pen.'
+	String get empty => 'No to-dos yet. In a note, tap the page with the to-do tool, or draw a small square with the shape pen.';
+
+	/// en: 'Nothing left to do.'
+	String get allDone => 'Nothing left to do.';
+
+	/// en: 'No to-dos are done yet.'
+	String get noneDone => 'No to-dos are done yet.';
+
+	/// en: 'Top level'
+	String get topLevel => 'Top level';
+
+	/// en: 'Page $n'
+	String page({required Object n}) => 'Page ${n}';
+
+	/// en: 'done $date'
+	String doneOn({required Object date}) => 'done ${date}';
+
+	/// en: 'To-do'
+	String get unlabeled => 'To-do';
 }
 
 // Path: home.tabs
@@ -731,6 +790,9 @@ class Translations$settings$prefLabels$en {
 	/// en: 'Hold the stylus button for'
 	String get stylusButtonAction => 'Hold the stylus button for';
 
+	/// en: 'Press the stylus button twice for the pen menu'
+	String get stylusButtonDoublePress => 'Press the stylus button twice for the pen menu';
+
 	/// en: 'Handwriting recognition'
 	String get handwritingRecognition => 'Handwriting recognition';
 
@@ -799,6 +861,9 @@ class Translations$settings$prefDescriptions$en {
 
 	/// en: 'Search and convert handwriting, on this device only'
 	String get handwritingRecognition => 'Search and convert handwriting, on this device only';
+
+	/// en: 'Pick the pen, color and thickness where the stylus is'
+	String get stylusButtonDoublePress => 'Pick the pen, color and thickness where the stylus is';
 
 	/// en: 'Larger images will be compressed'
 	String get maxImageSize => 'Larger images will be compressed';
@@ -1172,6 +1237,9 @@ class Translations$editor$pens$en {
 
 	/// en: 'Tape'
 	String get tape => 'Tape';
+
+	/// en: 'To-do'
+	String get todo => 'To-do';
 }
 
 // Path: editor.penOptions
@@ -1411,6 +1479,21 @@ class Translations$editor$splitView$en {
 	String get copied => 'Copied to the other side';
 }
 
+// Path: editor.penMenu
+class Translations$editor$penMenu$en {
+	Translations$editor$penMenu$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Pen menu'
+	String get title => 'Pen menu';
+
+	/// en: 'Eraser'
+	String get eraser => 'Eraser';
+}
+
 // Path: editor.zoomBox
 class Translations$editor$zoomBox$en {
 	Translations$editor$zoomBox$en.internal(this._root);
@@ -1637,6 +1720,24 @@ class Translations$handwriting$search$en {
 
 	/// en: 'Indexing handwriting…'
 	String get indexing => 'Indexing handwriting…';
+}
+
+// Path: todos.filter
+class Translations$todos$filter$en {
+	Translations$todos$filter$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Open'
+	String get open => 'Open';
+
+	/// en: 'Done'
+	String get done => 'Done';
+
+	/// en: 'All'
+	String get all => 'All';
 }
 
 // Path: sentry.consent.description

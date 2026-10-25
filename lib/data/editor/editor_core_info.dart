@@ -50,7 +50,15 @@ class EditorCoreInfo {
   /// - 3: Store page sizes for each page
   /// - 2: Store width and height in sbn
   /// - 1: Store version in sbn
-  static const sbnVersion = 19;
+  static const sbnVersion = 20;
+
+  /// The newest file version without to-dos (added in version 20).
+  ///
+  /// Notes without to-dos are still saved with this version, so older
+  /// versions of the app can edit them. Notes with to-dos are saved with
+  /// [sbnVersion], so older versions open them read-only instead of
+  /// losing the to-dos when saving.
+  static const lastVersionWithoutTodos = 19;
 
   /// The reason why the note is read-only,
   /// or `null` if the note is editable.
@@ -486,7 +494,9 @@ class EditorCoreInfo {
     final OrderedAssetCache assets = OrderedAssetCache();
 
     final json = {
-      'v': sbnVersion,
+      'v': pages.any((page) => page.todos.isNotEmpty)
+          ? sbnVersion
+          : lastVersionWithoutTodos,
       'ni': nextImageId,
       'b': backgroundColor?.toARGB32(),
       'p': backgroundPattern.name,

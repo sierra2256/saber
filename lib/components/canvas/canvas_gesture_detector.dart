@@ -59,7 +59,11 @@ class CanvasGestureDetector extends StatefulWidget {
   updatePointerData;
   final VoidCallback onHovering;
   final VoidCallback onHoveringEnd;
-  final ValueChanged<bool> onStylusButtonChanged;
+
+  /// Called when the stylus side button is pressed or released,
+  /// with the stylus's position (in global coordinates) and the time.
+  final void Function(bool pressed, Offset position, Duration timeStamp)
+  onStylusButtonChanged;
 
   /// Undoes the last change, returning false if there was nothing to undo.
   final bool Function() undo;
@@ -112,16 +116,23 @@ class CanvasGestureDetector extends StatefulWidget {
     required List<EditorPage> pages,
     required double screenWidth,
     required TransformationController transformationController,
+    double offsetInPage = 0,
   }) {
     final topOfPage = -CanvasGestureDetector.getTopOfPage(
       pageIndex: pageIndex,
       pages: pages,
       screenWidth: screenWidth,
     );
+    // [offsetInPage] is in page coordinates, but the page may be shrunk
+    // to fit the screen
+    final pageWidth = pages[pageIndex].size.width;
+    final fittedScale = pageWidth > 0
+        ? min(pageWidth, screenWidth) / pageWidth
+        : 1.0;
     transformationController.value = Matrix4.translationValues(
       0,
       // Slight upwards offset so that the page is not flush with the top of the screen
-      topOfPage + 50,
+      topOfPage + 50 - offsetInPage * fittedScale,
       0,
     );
   }
@@ -369,11 +380,23 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
       }
     } else if (widget.initialPageIndex != null) {
       // if we're opening a different note, scroll to the last recorded page
+      final page = widget.pages[widget.initialPageIndex!];
+      final highlightedTodo = page.todos
+          .where((todo) => todo.id == page.highlightedTodoId)
+          .firstOrNull;
       CanvasGestureDetector.scrollToPage(
         pageIndex: widget.initialPageIndex!,
         pages: widget.pages,
         screenWidth: MediaQuery.sizeOf(context).width,
         transformationController: widget._transformationController,
+        // show the highlighted to-do a third of the way down the screen
+        offsetInPage: highlightedTodo == null
+            ? 0
+            : max(
+                0,
+                highlightedTodo.rect.top -
+                    MediaQuery.sizeOf(context).height / 3,
+              ),
       );
     }
   }
@@ -535,7 +558,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
         event.buttons & kSecondaryButton != 0 || event.kind == .invertedStylus;
     if (stylusButtonWasPressed != pressed) {
       stylusButtonWasPressed = pressed;
-      widget.onStylusButtonChanged(pressed);
+      widget.onStylusButtonChanged(pressed, event.position, event.timeStamp);
     }
   }
 
@@ -544,7 +567,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     widget.updatePointerData(event.kind, null);
     if (stylusButtonWasPressed) {
       stylusButtonWasPressed = false;
-      widget.onStylusButtonChanged(false);
+      widget.onStylusButtonChanged(false, event.position, event.timeStamp);
     }
   }
 

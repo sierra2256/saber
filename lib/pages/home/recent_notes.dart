@@ -20,6 +20,7 @@ import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/routes.dart';
 import 'package:saber/i18n/strings.g.dart';
+import 'package:saber/pages/home/todos_page.dart';
 
 class const RecentPage({super.key}) extends StatefulHookWidget {
   @override
@@ -139,6 +140,7 @@ class _RecentPageState extends State<RecentPage> {
               ),
               actions: const [
                 NoteSearchButton(),
+                TodosButton(),
                 HomeLayoutButton(),
                 SyncingButton(),
               ],

@@ -24,11 +24,13 @@ import 'package:saber/data/nextcloud/saber_syncer.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/routes.dart';
 import 'package:saber/data/sentry/sentry_init.dart';
+import 'package:saber/data/todos/todo_indexer.dart';
 import 'package:saber/data/tools/stroke_properties.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/home/home.dart';
 import 'package:saber/pages/logs.dart';
+import 'package:saber/pages/quick_memo.dart';
 import 'package:saber/pages/user/login.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:worker_manager/worker_manager.dart';
@@ -46,6 +48,33 @@ Future<void> main(List<String> args) async {
 }
 
 Future<void> appRunner(List<String> args) async {
+  await initApp(args);
+
+  runApp(SentryWidget(child: TranslationProvider(child: const App())));
+  startSyncAfterLoaded();
+  unawaited(HandwritingIndexer.init());
+  unawaited(TodoIndexer.init());
+  setupBackgroundSync();
+}
+
+/// The entry point of the quick memo screen, which Android shows over the
+/// lock screen (see `QuickMemoActivity.kt`).
+///
+/// This runs in its own Flutter engine, so it only initializes what the
+/// quick memo needs: no syncing or background work, and no home screen.
+@pragma('vm:entry-point')
+Future<void> quickMemoMain() async {
+  FlavorConfig.setupFromEnvironment();
+  await initSentry(() async {
+    await initApp(const []);
+    runApp(
+      SentryWidget(child: TranslationProvider(child: const QuickMemoApp())),
+    );
+  });
+}
+
+/// Initializes everything the app needs before [runApp].
+Future<void> initApp(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final parser = ArgParser()..addFlag('verbose', abbr: 'v', negatable: false);
@@ -120,10 +149,6 @@ Future<void> appRunner(List<String> args) async {
   });
 
   HttpOverrides.global = NcHttpOverrides();
-  runApp(SentryWidget(child: TranslationProvider(child: const App())));
-  startSyncAfterLoaded();
-  unawaited(HandwritingIndexer.init());
-  setupBackgroundSync();
 }
 
 void startSyncAfterLoaded() async {
@@ -257,6 +282,7 @@ class const App({super.key}) extends StatefulWidget {
           initialPageIndex: int.tryParse(
             state.uri.queryParameters['page'] ?? '',
           ),
+          highlightTodo: int.tryParse(state.uri.queryParameters['todo'] ?? ''),
         ),
       ),
       GoRoute(

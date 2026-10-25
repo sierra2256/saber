@@ -388,6 +388,12 @@ class _SettingsPageState extends State<SettingsPage> {
                       if (!ready) stows.handwritingRecognition.value = false;
                     },
                   ),
+                SettingsSwitch(
+                  title: t.settings.prefLabels.stylusButtonDoublePress,
+                  subtitle: t.settings.prefDescriptions.stylusButtonDoublePress,
+                  icon: Icons.donut_large,
+                  pref: stows.stylusButtonDoublePress,
+                ),
                 SettingsSelection(
                   title: t.settings.prefLabels.stylusButtonAction,
                   subtitle:

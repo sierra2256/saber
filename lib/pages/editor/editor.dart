@@ -11,11 +11,13 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as flutter_quill;
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:keybinder/keybinder.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:saber/components/canvas/_asset_cache.dart';
+import 'package:saber/components/canvas/_rectangle_stroke.dart';
 import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/canvas.dart';
 import 'package:saber/components/canvas/canvas_gesture_detector.dart';
@@ -34,12 +36,15 @@ import 'package:saber/components/toolbar/color_bar.dart';
 import 'package:saber/components/toolbar/editor_bottom_sheet.dart';
 import 'package:saber/components/toolbar/editor_page_manager.dart';
 import 'package:saber/components/toolbar/elements_bar.dart';
+import 'package:saber/components/toolbar/pen_radial_menu.dart';
+import 'package:saber/components/toolbar/quick_options.dart';
 import 'package:saber/components/toolbar/toolbar.dart';
 import 'package:saber/data/editor/canvas_element.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/editor_history.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/editor/todo.dart';
 import 'package:saber/data/editor/zoom_box.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
@@ -60,10 +65,12 @@ import 'package:saber/data/tools/selection_transform.dart';
 import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/data/tools/table_tidier.dart';
 import 'package:saber/data/tools/tape.dart';
+import 'package:saber/data/tools/todo_tool.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/split_editor.dart';
 import 'package:saber/pages/home/whiteboard.dart';
 import 'package:sbn/change.dart';
+import 'package:sbn/tool_id.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
 typedef _PhotoInfo = ({Uint8List bytes, String extension});
@@ -90,6 +97,9 @@ class Editor extends StatefulWidget {
     this.customTitle,
     this.pdfPath,
     this.initialPageIndex,
+    this.quickMemo = false,
+    this.onQuickMemoDone,
+    this.highlightTodo,
   }) : initialPath = path != null
            ? Future.value(path)
            : FileManager.newFilePath('/'),
@@ -104,6 +114,18 @@ class Editor extends StatefulWidget {
   /// The page to scroll to when the note is opened,
   /// e.g. from a search result.
   final int? initialPageIndex;
+
+  /// Whether this is a quick memo (see [QuickMemoPage]), which can be shown
+  /// over the lock screen. Anything that could reveal other notes or files
+  /// (e.g. images, the clipboard, exporting, split view) is disabled.
+  final bool quickMemo;
+
+  /// Closes the quick memo, after it's been saved.
+  final Future<void> Function()? onQuickMemoDone;
+
+  /// The id of a to-do box on [initialPageIndex] to highlight briefly,
+  /// e.g. when it was opened from the to-do overview.
+  final int? highlightTodo;
 
   /// The file extension used by the app.
   /// Files with this extension are
@@ -191,6 +213,8 @@ class EditorState extends State<Editor> {
         return LaserPointer.currentLaserPointer;
       case .tape:
         return Tape.currentTape;
+      case .todo:
+        return TodoTool.currentTodoTool;
     }
   }();
   Tool get currentTool => _currentTool;
@@ -264,6 +288,15 @@ class EditorState extends State<Editor> {
       coreInfo.initialPageIndex = pageIndex;
       // don't restore the last scroll position instead
       CanvasGestureDetector.forgetTransform(filePath);
+
+      if (widget.highlightTodo case final id?) {
+        final page = coreInfo.pages[pageIndex];
+        page.highlightedTodoId = id;
+        _highlightTodoTimer = Timer(highlightTodoDuration, () {
+          page.highlightedTodoId = null;
+          page.redrawCurrentStroke();
+        });
+      }
     }
     if (coreInfo.readOnly) {
       log.info('Loaded file as read-only: ${coreInfo.readOnlyReason}');
@@ -506,6 +539,13 @@ class EditorState extends State<Editor> {
             image.dstRect = change.previous;
           });
           removeExcessPages();
+
+        case .todos:
+          createPage(item.pageIndex);
+          final page = coreInfo.pages[item.pageIndex];
+          page.todos = item.todosChange!.previous;
+          page.redrawStrokes();
+          removeExcessPages();
       }
 
       if (item.type != .move) {
@@ -568,6 +608,8 @@ class EditorState extends State<Editor> {
             ),
           ),
         );
+      case .todos:
+        undo(item.copyWith(todosChange: item.todosChange!.reverse()));
     }
   }
 
@@ -628,17 +670,91 @@ class EditorState extends State<Editor> {
     dragPageIndex = onWhichPageIsFocalPoint(details.focalPoint);
     if (dragPageIndex == null) return false;
 
+    _todoOnlyGesture = false;
+    final page = coreInfo.pages[dragPageIndex!];
+    final position = page.renderBox!.globalToLocal(details.focalPoint);
+    final touchesTodo = todoAt(page, position) != null;
+
     if (currentTool == Tool.textEditing) {
+      if (touchesTodo) return _todoOnlyGesture = true;
       return false;
     } else if (stows.editorFingerDrawing.value ||
         currentPointerKind == PointerDeviceKind.stylus ||
         currentPointerKind == PointerDeviceKind.invertedStylus ||
         currentPressure != null) {
       return true;
+    } else if (touchesTodo) {
+      // Any finger can tick a to-do
+      return _todoOnlyGesture = true;
     } else {
       log.fine('Non-stylus found, rejected stroke');
       return false;
     }
+  }
+
+  /// The to-do box at [position] on [page], if any.
+  TodoBox? todoAt(EditorPage page, Offset position) {
+    for (final todo in page.todos.reversed) {
+      if (todo.contains(position)) return todo;
+    }
+    return null;
+  }
+
+  /// How long [Editor.highlightTodo] is highlighted for.
+  static const highlightTodoDuration = Duration(seconds: 4);
+  Timer? _highlightTodoTimer;
+
+  /// Whether the current gesture was only accepted because it started
+  /// on a to-do box, e.g. a finger when finger drawing is off.
+  var _todoOnlyGesture = false;
+
+  /// The to-do box the current gesture started on. It is ticked (or
+  /// unticked) if the gesture ends without moving much.
+  TodoBox? _todoTap;
+
+  /// Where the current gesture started.
+  var _gestureStart = Offset.zero;
+
+  /// Whether the current gesture should be ignored,
+  /// e.g. because it moved away from a to-do box.
+  var _ignoreGesture = false;
+
+  /// The page's to-dos at the start of an eraser gesture,
+  /// used to record erased to-dos in the history.
+  List<TodoBox>? _todosBeforeErasing;
+
+  /// Replaces the to-dos on [page] and records the change in the history.
+  void _changeTodos(int pageIndex, List<TodoBox> todos) {
+    final page = coreInfo.pages[pageIndex];
+    final previous = page.todos;
+    page.todos = todos;
+    page.redrawStrokes();
+    history.recordChange(
+      EditorHistoryItem(
+        type: .todos,
+        pageIndex: pageIndex,
+        strokes: [],
+        images: [],
+        todosChange: Change(previous: previous, current: todos),
+      ),
+    );
+  }
+
+  /// Closes the to-do with [id] on page [pageIndex], or reopens it.
+  @visibleForTesting
+  void toggleTodo(int pageIndex, int id) {
+    final page = coreInfo.pages[pageIndex];
+    final now = DateTime.now();
+    _changeTodos(pageIndex, [
+      for (final todo in page.todos)
+        if (todo.id == id) todo.toggled(now) else todo,
+    ]);
+  }
+
+  /// Adds [todo] to page [pageIndex].
+  void _addTodo(int pageIndex, TodoBox todo) {
+    createPage(pageIndex);
+    _changeTodos(pageIndex, [...coreInfo.pages[pageIndex].todos, todo]);
   }
 
   void onDrawStart(ScaleStartDetails details) {
@@ -653,7 +769,32 @@ class EditorState extends State<Editor> {
     final page = coreInfo.pages[dragPageIndex!];
     history.canRedo = false;
     _isDrawing = true;
+    // touching the screen between presses isn't a double press
+    _lastStylusButtonPress = null;
+    closePenMenu();
+    _gestureStart = position;
+    _ignoreGesture = false;
+    // The eraser erases to-do boxes instead of ticking them
+    _todoTap = currentTool is Eraser ? null : todoAt(page, position);
+    if (_todoOnlyGesture && _todoTap == null) {
+      _ignoreGesture = true;
+      return;
+    }
 
+    if (_todoTap != null || currentTool is TodoTool) {
+      // The tool starts in [drawUpdateAt] if this isn't a tap
+      previousPosition = position;
+      moveOffset = .zero;
+      Select.currentSelect.unselectFor(this);
+      return;
+    }
+    _startToolAt(position, page);
+
+    // setState to let canvas know about currentStroke
+    setState(() {});
+  }
+
+  void _startToolAt(Offset position, EditorPage page) {
     if (currentTool is Pen) {
       (currentTool as Pen).onDragStart(
         position,
@@ -662,6 +803,7 @@ class EditorState extends State<Editor> {
         currentPressure,
       );
     } else if (currentTool is Eraser) {
+      _todosBeforeErasing = page.todos;
       _erase(currentTool as Eraser, position, page);
     } else if (currentTool is Select) {
       final select = currentTool as Select;
@@ -701,9 +843,6 @@ class EditorState extends State<Editor> {
     if (currentTool is! Select) {
       Select.currentSelect.unselectFor(this);
     }
-
-    // setState to let canvas know about currentStroke
-    setState(() {});
   }
 
   void onDrawUpdate(ScaleUpdateDetails details) {
@@ -714,6 +853,22 @@ class EditorState extends State<Editor> {
   /// Continues a draw gesture at [position] on page [dragPageIndex].
   void drawUpdateAt(Offset position) {
     final page = coreInfo.pages[dragPageIndex!];
+    if (_ignoreGesture) return;
+    if (_todoTap != null || currentTool is TodoTool) {
+      if ((position - _gestureStart).distance <= TodoTool.maxTapMovement) {
+        return;
+      }
+      // Not a tap
+      final wasTodoTap = _todoTap != null;
+      _todoTap = null;
+      if (_todoOnlyGesture || currentTool is TodoTool || !wasTodoTap) {
+        _ignoreGesture = true;
+        return;
+      }
+      // Draw from where the gesture started, e.g. writing over a box
+      _startToolAt(_gestureStart, page);
+      setState(() {});
+    }
     final offset = position - previousPosition;
 
     if (currentTool is Pen) {
@@ -754,10 +909,37 @@ class EditorState extends State<Editor> {
     final page = coreInfo.pages[dragPageIndex!];
     bool shouldSave = true;
     setState(() {
+      if (_ignoreGesture) {
+        shouldSave = false;
+        return;
+      }
+      if (_todoTap case final todo?) {
+        toggleTodo(dragPageIndex!, todo.id);
+        return;
+      }
+      if (currentTool is TodoTool) {
+        _addTodo(
+          dragPageIndex!,
+          TodoBox.at(_gestureStart, TodoBox.sizeFor(coreInfo.lineHeight)),
+        );
+        // Write the label with the pen
+        currentTool = Pen.currentPen;
+        return;
+      }
       if (currentTool is Pen) {
         var newStroke = (currentTool as Pen).onDragEnd();
         if (newStroke == null) return;
         if (newStroke.isEmpty) return;
+
+        if (currentTool is ShapePen &&
+            newStroke is RectangleStroke &&
+            TodoBox.looksLikeBox(newStroke.rect, coreInfo.lineHeight)) {
+          // A small square becomes a to-do box
+          final rect = newStroke.rect;
+          final size = (rect.width + rect.height) / 2;
+          _addTodo(newStroke.pageIndex, TodoBox.at(rect.center, size));
+          return;
+        }
 
         if (currentTool is Tape) {
           if (Tape.isTap(newStroke)) {
@@ -819,6 +1001,19 @@ class EditorState extends State<Editor> {
             stows.disableEraserAfterUse.value) {
           // restore previous tool
           currentTool = _lastNonEraserTool;
+        }
+        final todosBefore = _todosBeforeErasing;
+        _todosBeforeErasing = null;
+        if (todosBefore != null && !identical(todosBefore, page.todos)) {
+          history.recordChange(
+            EditorHistoryItem(
+              type: .todos,
+              pageIndex: dragPageIndex!,
+              strokes: [],
+              images: [],
+              todosChange: Change(previous: todosBefore, current: page.todos),
+            ),
+          );
         }
         if (eraser.partial) {
           final (:erased, :created) = eraser.onPartialDragEnd();
@@ -902,11 +1097,22 @@ class EditorState extends State<Editor> {
     if (shouldSave) autosaveAfterDelay();
 
     _isDrawing = false;
+    _todoTap = null;
+    _ignoreGesture = false;
     // apply any stylus button changes that happened during the stroke
     _applyStylusButtonState();
   }
 
   void _erase(Eraser eraser, Offset position, EditorPage page) {
+    if (!eraser.highlighterOnly &&
+        page.todos.any(
+          (todo) => todo.rect.inflate(eraser.size).contains(position),
+        )) {
+      page.todos = [
+        for (final todo in page.todos)
+          if (!todo.rect.inflate(eraser.size).contains(position)) todo,
+      ];
+    }
     if (eraser.partial) {
       eraser.erasePartially(position, page.strokes);
     } else {
@@ -944,13 +1150,157 @@ class EditorState extends State<Editor> {
   /// Holding the stylus button temporarily switches to the tool
   /// chosen in [stows.stylusButtonAction] (the eraser by default),
   /// and releasing it switches back to the previous tool.
-  void onStylusButtonChanged(bool buttonIsPressed) {
+  ///
+  /// Pressing the button twice quickly (while hovering) opens the pen menu
+  /// at [position] instead, see [stows.stylusButtonDoublePress].
+  void onStylusButtonChanged(
+    bool buttonIsPressed, [
+    Offset? position,
+    Duration? timeStamp,
+  ]) {
     _stylusButtonHeld = buttonIsPressed;
+
+    if (buttonIsPressed &&
+        !_isDrawing &&
+        _isStylusButtonDoublePress(timeStamp)) {
+      // a double press, so don't switch tools after all
+      _stylusButtonHeld = false;
+      _applyStylusButtonState();
+      togglePenMenu(position);
+      return;
+    }
 
     // Don't change tools in the middle of a stroke,
     // this is done in [onDrawEnd] instead.
     if (_isDrawing) return;
     _applyStylusButtonState();
+  }
+
+  /// Where the pen menu is open (in this editor's coordinates),
+  /// or null if it's closed. See [togglePenMenu].
+  Offset? penMenuPosition;
+
+  /// Opens the pen menu at [globalPosition]
+  /// (or the middle of the editor), or closes it if it's open.
+  void togglePenMenu([Offset? globalPosition]) {
+    if (!mounted) return;
+    setState(() {
+      if (penMenuPosition != null) {
+        penMenuPosition = null;
+        return;
+      }
+      final box = context.findRenderObject() as RenderBox?;
+      if (box == null) return;
+      penMenuPosition = globalPosition != null
+          ? box.globalToLocal(globalPosition)
+          : box.size.center(Offset.zero);
+    });
+  }
+
+  void closePenMenu() {
+    if (penMenuPosition == null) return;
+    setState(() => penMenuPosition = null);
+  }
+
+  Widget _buildPenMenu() {
+    final tool = currentTool;
+    final invert =
+        stows.editorAutoInvert.value && Theme.brightnessOf(context) == .dark;
+
+    PenMenuTool penTool(ToolId toolId, Object icon, String tooltip) =>
+        PenMenuTool(
+          icon: icon,
+          tooltip: tooltip,
+          selected: tool is Pen && tool.toolId == toolId,
+          onSelected: () => setTool(Pen.ofType(toolId)),
+        );
+
+    final List<double> sizes;
+    final double? currentSize;
+    final ValueChanged<double> onSizeSelected;
+    switch (tool) {
+      case final Pen pen:
+        sizes = WidthPresets.of(pen);
+        currentSize = pen.options.size;
+        onSizeSelected = (size) => setState(() => pen.options.size = size);
+      case Eraser():
+        sizes = Eraser.sizePresets;
+        currentSize = stows.eraserSize.value;
+        onSizeSelected = (size) =>
+            setState(() => stows.eraserSize.value = size);
+      default:
+        sizes = const [];
+        currentSize = null;
+        onSizeSelected = (_) {};
+    }
+
+    return PenRadialMenu(
+      center: penMenuPosition!,
+      tools: [
+        penTool(.fountainPen, Pen.fountainPenIcon, t.editor.pens.fountainPen),
+        penTool(
+          .ballpointPen,
+          Pen.ballpointPenIcon,
+          t.editor.pens.ballpointPen,
+        ),
+        penTool(.pencil, Pencil.pencilIcon, t.editor.pens.pencil),
+        penTool(
+          .highlighter,
+          Highlighter.highlighterIcon,
+          t.editor.pens.highlighter,
+        ),
+        penTool(.shapePen, ShapePen.shapePenIcon, t.editor.pens.shapePen),
+        PenMenuTool(
+          icon: FontAwesomeIcons.eraser,
+          tooltip: t.editor.penMenu.eraser,
+          selected: tool is Eraser,
+          onSelected: () {
+            if (tool is! Eraser) setTool(Eraser());
+          },
+        ),
+        PenMenuTool(
+          icon: CupertinoIcons.lasso,
+          tooltip: t.editor.toolbar.select,
+          selected: tool is Select,
+          onSelected: () => setTool(Select.currentSelect),
+        ),
+      ],
+      colors: QuickColors.colorsUpTo(7),
+      currentColor: tool is Pen ? tool.color : null,
+      onColorSelected: tool is Pen || tool is Select ? setColor : null,
+      sizes: sizes,
+      currentSize: currentSize,
+      onSizeSelected: onSizeSelected,
+      invert: invert,
+      onClose: closePenMenu,
+    );
+  }
+
+  /// When the stylus button was last pressed, see
+  /// [_isStylusButtonDoublePress].
+  Duration? _lastStylusButtonPress;
+
+  /// A stopwatch for when the stylus button is pressed without a timestamp
+  /// (e.g. in tests).
+  final _stylusButtonStopwatch = Stopwatch()..start();
+
+  /// The longest time between two presses of the stylus button
+  /// for them to count as a double press.
+  static const stylusButtonDoublePressTimeout = Duration(milliseconds: 400);
+
+  /// Records a press of the stylus button,
+  /// and returns whether it was the second press of a double press.
+  bool _isStylusButtonDoublePress(Duration? timeStamp) {
+    if (!stows.stylusButtonDoublePress.value) return false;
+    final now = timeStamp ?? _stylusButtonStopwatch.elapsed;
+    final last = _lastStylusButtonPress;
+    final isDoublePress =
+        last != null &&
+        now >= last &&
+        now - last <= stylusButtonDoublePressTimeout;
+    // a third press starts a new double press
+    _lastStylusButtonPress = isDoublePress ? null : now;
+    return isDoublePress;
   }
 
   void _applyStylusButtonState() {
@@ -995,6 +1345,74 @@ class EditorState extends State<Editor> {
 
     currentTool = previousTool;
     return true;
+  }
+
+  /// Switches to [tool], e.g. from the toolbar or the pen menu.
+  ///
+  /// Picking the eraser while the eraser is selected
+  /// switches back to the previous tool.
+  void setTool(Tool tool) {
+    // the user picked a tool, so don't restore the old one later
+    _toolBeforeStylusButton = null;
+
+    if (tool is Eraser && currentTool is Eraser) {
+      // setTool(Eraser) is a special case to toggle the eraser on/off
+      tool = _lastNonEraserTool;
+    }
+
+    currentTool = tool;
+
+    if (tool is Highlighter) {
+      Highlighter.currentHighlighter = tool;
+    } else if (tool is Tape) {
+      Tape.currentTape = tool;
+    } else if (tool is Pencil) {
+      Pencil.currentPencil = tool;
+    } else if (tool is Pen) {
+      Pen.currentPen = tool;
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  /// Changes the color of the current pen,
+  /// or of the selected strokes if the select tool is active.
+  void setColor(Color color) {
+    setState(() {
+      updateColorBar(color);
+
+      if (currentTool is Highlighter) {
+        (currentTool as Highlighter).color = color.withAlpha(Highlighter.alpha);
+      } else if (currentTool is Pen) {
+        (currentTool as Pen).color = color;
+      } else if (currentTool is Select) {
+        // Changes color of selected strokes
+        final select = currentTool as Select;
+        if (select.isDoneSelectingFor(this)) {
+          final strokes = select.selectResult.strokes;
+
+          final colorChange = <Stroke, Change<Color>>{};
+          for (final stroke in strokes) {
+            colorChange[stroke] = Change(
+              previous: stroke.color,
+              current: color,
+            );
+            stroke.color = color;
+          }
+
+          history.recordChange(
+            EditorHistoryItem(
+              type: .changeColor,
+              pageIndex: strokes.first.pageIndex,
+              strokes: strokes,
+              colorChange: colorChange,
+              images: [],
+            ),
+          );
+          autosaveAfterDelay();
+        }
+      }
+    });
   }
 
   void onMoveImage(EditorImage image, Rect offset) {
@@ -1376,6 +1794,12 @@ class EditorState extends State<Editor> {
   /// If [photoInfos] is provided, it will be used instead of the file picker.
   ///
   /// The images are shifted by [offset], e.g. when pasting again.
+  /// Saves the quick memo and closes it, see [Editor.quickMemo].
+  Future<void> finishQuickMemo() async {
+    await flushSave();
+    await widget.onQuickMemoDone?.call();
+  }
+
   Future<int> _pickPhotos([
     List<_PhotoInfo>? photoInfos,
     Offset offset = .zero,
@@ -1544,6 +1968,9 @@ class EditorState extends State<Editor> {
   }
 
   Future paste() async {
+    // the clipboard could reveal private data on the lock screen
+    if (widget.quickMemo) return;
+
     /// Maps image formats to their file extension.
     const Map<SimpleFileFormat, String> formats = {
       Formats.jpeg: '.jpeg',
@@ -2009,29 +2436,7 @@ class EditorState extends State<Editor> {
         bottom: stows.editorToolbarAlignment.value != AxisDirection.up,
         child: Toolbar(
           readOnly: coreInfo.readOnly,
-          setTool: (tool) {
-            // the user picked a tool, so don't restore the old one later
-            _toolBeforeStylusButton = null;
-
-            if (tool is Eraser && currentTool is Eraser) {
-              // setTool(Eraser) is a special case to toggle the eraser on/off
-              tool = _lastNonEraserTool;
-            }
-
-            currentTool = tool;
-
-            if (tool is Highlighter) {
-              Highlighter.currentHighlighter = tool;
-            } else if (tool is Tape) {
-              Tape.currentTape = tool;
-            } else if (tool is Pencil) {
-              Pencil.currentPencil = tool;
-            } else if (tool is Pen) {
-              Pen.currentPen = tool;
-            }
-
-            if (mounted) setState(() {});
-          },
+          setTool: setTool,
           currentTool: currentTool,
           duplicateSelection: () {
             final select = currentTool as Select;
@@ -2105,45 +2510,7 @@ class EditorState extends State<Editor> {
               autosaveAfterDelay();
             });
           },
-          setColor: (color) {
-            setState(() {
-              updateColorBar(color);
-
-              if (currentTool is Highlighter) {
-                (currentTool as Highlighter).color = color.withAlpha(
-                  Highlighter.alpha,
-                );
-              } else if (currentTool is Pen) {
-                (currentTool as Pen).color = color;
-              } else if (currentTool is Select) {
-                // Changes color of selected strokes
-                final select = currentTool as Select;
-                if (select.isDoneSelectingFor(this)) {
-                  final strokes = select.selectResult.strokes;
-
-                  final colorChange = <Stroke, Change<Color>>{};
-                  for (final stroke in strokes) {
-                    colorChange[stroke] = Change(
-                      previous: stroke.color,
-                      current: color,
-                    );
-                    stroke.color = color;
-                  }
-
-                  history.recordChange(
-                    EditorHistoryItem(
-                      type: .changeColor,
-                      pageIndex: strokes.first.pageIndex,
-                      strokes: strokes,
-                      colorChange: colorChange,
-                      images: [],
-                    ),
-                  );
-                  autosaveAfterDelay();
-                }
-              }
-            });
-          },
+          setColor: setColor,
           quillFocus: quillFocus,
           textEditing: currentTool == Tool.textEditing,
           toggleTextEditing: () => setState(() {
@@ -2170,6 +2537,7 @@ class EditorState extends State<Editor> {
             stows.editorFingerDrawing.value = !stows.editorFingerDrawing.value;
             lastSeenPointerCount = 0;
           },
+          restricted: widget.quickMemo,
           pickPhoto: _pickPhotos,
           paste: paste,
           pasteAgain: _lastPaste == null ? null : pasteAgain,
@@ -2187,7 +2555,16 @@ class EditorState extends State<Editor> {
           leading: Row(
             mainAxisSize: .min,
             children: [
-              SaveIndicator(savingState: savingState, triggerSave: saveToFile),
+              if (widget.quickMemo)
+                TextButton(
+                  onPressed: finishQuickMemo,
+                  child: Text(t.quickMemo.done),
+                )
+              else
+                SaveIndicator(
+                  savingState: savingState,
+                  triggerSave: saveToFile,
+                ),
               if (showTitleInToolbar)
                 SizedBox(
                   width: 180,
@@ -2325,6 +2702,8 @@ class EditorState extends State<Editor> {
                   ),
                 },
               ),
+              if (penMenuPosition != null)
+                Positioned.fill(child: _buildPenMenu()),
             ],
           ),
         ),
@@ -2339,6 +2718,11 @@ class EditorState extends State<Editor> {
         return PopScope(
           canPop: savingState == .saved,
           onPopInvokedWithResult: (didPop, _) {
+            if (widget.quickMemo && !didPop) {
+              // going back finishes the memo, after saving it
+              finishQuickMemo();
+              return;
+            }
             switch (savingState) {
               case .waitingToSave:
                 assert(!didPop);
@@ -2836,6 +3220,7 @@ class EditorState extends State<Editor> {
     _delayedSaveTimer?.cancel();
     _watchServerTimer?.cancel();
     _lastSeenPointerCountTimer?.cancel();
+    _highlightTodoTimer?.cancel();
 
     _removeKeybindings();
 

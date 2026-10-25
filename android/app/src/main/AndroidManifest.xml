@@ -134,6 +134,51 @@
            android:grantUriPermissions="true" >
        </provider>
 
+
+
+        <!-- A quick memo that can be opened over the lock screen without
+             unlocking, like Samsung's Screen Off Memo. It has its own task,
+             so the rest of the app isn't shown over the lock screen. -->
+        <activity
+            android:name=".QuickMemoActivity"
+            android:exported="true"
+            android:label="@string/quick_memo"
+            android:icon="@mipmap/ic_launcher"
+            android:taskAffinity="${applicationId}.quickmemo"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/QuickMemoTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/QuickMemoTheme"
+              />
+            <!-- A launcher icon, so it can be added as a lock screen shortcut
+                 or to the S Pen's Air command menu -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <!-- A Quick Settings tile that opens the quick memo -->
+        <service
+            android:name=".QuickMemoTileService"
+            android:exported="true"
+            android:label="@string/quick_memo"
+            android:icon="@drawable/ic_quick_memo"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="false"/>
+        </service>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

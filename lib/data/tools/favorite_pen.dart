@@ -49,28 +49,7 @@ class FavoritePen {
   /// Switches the relevant pen (e.g. [Pen.currentPen]) to this favorite's
   /// pen type, color and size, and returns it.
   Pen apply() {
-    final Pen pen;
-    switch (toolId) {
-      case .highlighter:
-        pen = Highlighter.currentHighlighter;
-      case .pencil:
-        pen = Pencil.currentPencil;
-      case .tape:
-        pen = Tape.currentTape;
-      case .shapePen:
-        if (Pen.currentPen is! ShapePen) Pen.currentPen = ShapePen();
-        pen = Pen.currentPen;
-      case .ballpointPen:
-        if (Pen.currentPen.toolId != .ballpointPen) {
-          Pen.currentPen = Pen.ballpointPen();
-        }
-        pen = Pen.currentPen;
-      default:
-        if (Pen.currentPen.toolId != .fountainPen) {
-          Pen.currentPen = Pen.fountainPen();
-        }
-        pen = Pen.currentPen;
-    }
+    final pen = Pen.ofType(toolId);
     pen.color = color;
     pen.options.size = size;
     return pen;

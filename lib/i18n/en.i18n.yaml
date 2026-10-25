@@ -117,6 +117,7 @@ settings:
     autoClearWhiteboardOnExit: Auto-clear the whiteboard
     disableEraserAfterUse: Auto-disable the eraser
     stylusButtonAction: Hold the stylus button for
+    stylusButtonDoublePress: Press the stylus button twice for the pen menu
     handwritingRecognition: Handwriting recognition
     hideFingerDrawingToggle: Hide the finger drawing toggle
     autoDisableFingerDrawingWhenStylusDetected: Auto-disable finger drawing
@@ -138,6 +139,7 @@ settings:
     autoClearWhiteboardOnExit: Clears the whiteboard after you exit the app
     disableEraserAfterUse: Automatically switches back to the pen after using the eraser
     handwritingRecognition: Search and convert handwriting, on this device only
+    stylusButtonDoublePress: Pick the pen, color and thickness where the stylus is
     maxImageSize: Larger images will be compressed
     hideFingerDrawing:
       shown: Prevents accidental toggling
@@ -300,6 +302,7 @@ editor:
     shapePen: Shape pen
     laserPointer: Laser pointer
     tape: Tape
+    todo: To-do
   penOptions:
     size: Size
   favoritePens:
@@ -364,6 +367,9 @@ editor:
     importPdf: Import PDF
     copyToOtherSide: Copy to the other side
     copied: Copied to the other side
+  penMenu:
+    title: Pen menu
+    eraser: Eraser
   zoomBox:
     title: Zoom writing box
     lineUp: Previous line
@@ -419,6 +425,9 @@ editor:
   pages: Pages
   untitled: Untitled
   needsToSaveBeforeExiting: Saving your changes… You can safely exit the editor when it's done
+quickMemo:
+  title: Quick memo
+  done: Done
 handwriting:
   setup:
     title: Handwriting recognition
@@ -440,3 +449,19 @@ handwriting:
     noResults: No results
     page: Page $page
     indexing: Indexing handwriting…
+todos:
+  title: To-dos
+  openCount(plural, param=n):
+    one: 1 open to-do
+    other: $n open to-dos
+  filter:
+    open: Open
+    done: Done
+    all: All
+  empty: No to-dos yet. In a note, tap the page with the to-do tool, or draw a small square with the shape pen.
+  allDone: Nothing left to do.
+  noneDone: No to-dos are done yet.
+  topLevel: Top level
+  page(param=n): Page $n
+  doneOn(param=date): done $date
+  unlabeled: To-do
