@@ -127,6 +127,8 @@ settings:
     autosave: Auto-save
     shapeRecognitionDelay: Shape recognition delay
     autoStraightenLines: Auto straighten lines
+    snapLinesToAxes: Snap lines to horizontal and vertical
+    tidyTables: Tidy tables
     customDataDir: Custom Saber folder
     sentry: Error reporting
   prefDescriptions:
@@ -147,6 +149,8 @@ settings:
     autosave: Auto-save after a short delay, or never
     shapeRecognitionDelay: How often to update the shape preview
     autoStraightenLines: Straightens long lines without having to use the shape pen
+    snapLinesToAxes: Straightened lines that are almost level or upright become exactly level or upright
+    tidyTables: Lines drawn with the shape pen snap to the lines and rectangles they touch, so tables become clean grids
     shouldAlwaysAlertForUpdates: Tell me about updates as soon as they're available
     sentry:
       active: Active

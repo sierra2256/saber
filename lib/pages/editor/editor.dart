@@ -55,6 +55,7 @@ import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/tools/selection_transform.dart';
 import 'package:saber/data/tools/shape_pen.dart';
+import 'package:saber/data/tools/table_tidier.dart';
 import 'package:saber/data/tools/tape.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/home/whiteboard.dart';
@@ -735,7 +736,7 @@ class EditorState extends State<Editor> {
     bool shouldSave = true;
     setState(() {
       if (currentTool is Pen) {
-        final newStroke = (currentTool as Pen).onDragEnd();
+        var newStroke = (currentTool as Pen).onDragEnd();
         if (newStroke == null) return;
         if (newStroke.isEmpty) return;
 
@@ -749,23 +750,50 @@ class EditorState extends State<Editor> {
             return;
           }
           // Tape is always straight
-          newStroke.convertToLine();
+          newStroke.convertToLine(snapToAxes: stows.snapLinesToAxes.value);
         } else if (stows.autoStraightenLines.value &&
             currentTool is! ShapePen &&
             newStroke.isStraightLine()) {
-          newStroke.convertToLine();
+          newStroke.convertToLine(snapToAxes: stows.snapLinesToAxes.value);
+        }
+
+        var tidiedStrokes = const <Stroke, Stroke>{};
+        if (currentTool is ShapePen && stows.tidyTables.value) {
+          // snap table lines to each other
+          final tidied = TableTidier.tidy(newStroke, page.strokes);
+          newStroke = tidied.newStroke;
+          tidiedStrokes = tidied.changed;
         }
 
         createPage(newStroke.pageIndex);
+        for (final MapEntry(key: oldStroke, value: tidiedStroke)
+            in tidiedStrokes.entries) {
+          final index = page.strokes.indexOf(oldStroke);
+          if (index >= 0) page.strokes[index] = tidiedStroke;
+        }
         page.insertStroke(newStroke);
-        history.recordChange(
-          EditorHistoryItem(
-            type: .draw,
-            pageIndex: dragPageIndex!,
-            strokes: [newStroke],
-            images: [],
-          ),
-        );
+        if (tidiedStrokes.isEmpty) {
+          history.recordChange(
+            EditorHistoryItem(
+              type: .draw,
+              pageIndex: dragPageIndex!,
+              strokes: [newStroke],
+              images: [],
+            ),
+          );
+        } else {
+          // one history item, so undo removes the new line
+          // and restores the lines it snapped
+          history.recordChange(
+            EditorHistoryItem(
+              type: .replaceStrokes,
+              pageIndex: dragPageIndex!,
+              strokes: tidiedStrokes.keys.toList(),
+              newStrokes: [...tidiedStrokes.values, newStroke],
+              images: [],
+            ),
+          );
+        }
       } else if (currentTool is Eraser) {
         final eraser = currentTool as Eraser;
         if (_toolBeforeStylusButton == null &&

@@ -10,6 +10,7 @@ import 'package:saber/components/canvas/_rectangle_stroke.dart';
 import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/extensions/color_extensions.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:saber/data/tools/select.dart';
@@ -234,14 +235,16 @@ class CanvasPainter extends CustomPainter {
         break;
       case DefaultUnistrokeNames.line:
         var (firstPoint, lastPoint) = shape.convertToLine();
-        (firstPoint, lastPoint) = Stroke.snapLine(
-          firstPoint is PointVector
-              ? firstPoint
-              : PointVector.fromOffset(offset: firstPoint),
-          lastPoint is PointVector
-              ? lastPoint
-              : PointVector.fromOffset(offset: lastPoint),
-        );
+        if (stows.snapLinesToAxes.value) {
+          (firstPoint, lastPoint) = Stroke.snapLine(
+            firstPoint is PointVector
+                ? firstPoint
+                : PointVector.fromOffset(offset: firstPoint),
+            lastPoint is PointVector
+                ? lastPoint
+                : PointVector.fromOffset(offset: lastPoint),
+          );
+        }
         canvas.drawLine(firstPoint, lastPoint, shapePaint);
       case DefaultUnistrokeNames.rectangle:
         final rect = shape.convertToRect();

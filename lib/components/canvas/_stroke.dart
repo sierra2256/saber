@@ -351,9 +351,9 @@ class Stroke {
 
   /// Replaces the points in this stroke with a straight line.
   ///
-  /// If the resulting line is close to horizontal or vertical,
-  /// it will be snapped to be exactly horizontal or vertical.
-  void convertToLine() {
+  /// If [snapToAxes] is true and the resulting line is close to horizontal
+  /// or vertical, it will be snapped to be exactly horizontal or vertical.
+  void convertToLine({bool snapToAxes = true}) {
     assert(points.length >= 2);
 
     // Use the average pressure
@@ -368,7 +368,7 @@ class Stroke {
     );
 
     // Snap to the horizontal or vertical axis
-    (firstPoint, lastPoint) = snapLine(firstPoint, lastPoint);
+    if (snapToAxes) (firstPoint, lastPoint) = snapLine(firstPoint, lastPoint);
 
     points.clear();
     points.add(firstPoint);
@@ -377,6 +377,18 @@ class Stroke {
     options.isComplete = true;
     options.start.taperEnabled = false;
     options.end.taperEnabled = false;
+  }
+
+  /// Returns a copy of this line (see [convertToLine])
+  /// with new end points.
+  Stroke copyAsLine(Offset start, Offset end) {
+    final pressure = points.firstOrNull?.pressure;
+    final startPoint = PointVector(start.dx, start.dy, pressure);
+    final endPoint = PointVector(end.dx, end.dy, pressure);
+    return copy()
+      ..points.clear()
+      ..points.addAll([startPoint, endPoint, endPoint])
+      ..markPolygonNeedsUpdating();
   }
 
   /// Snaps a line to either horizontal or vertical

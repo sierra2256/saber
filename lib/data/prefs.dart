@@ -173,6 +173,18 @@ class Stows {
     volatile: !_isOnMainIsolate,
   );
 
+  /// Whether straightened lines that are almost horizontal or vertical
+  /// are snapped to be exactly horizontal or vertical.
+  final snapLinesToAxes = PlainStow(
+    'snapLinesToAxes',
+    true,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Whether lines drawn with the shape pen snap to the lines and
+  /// rectangles they touch, so hand-drawn tables become clean grids.
+  final tidyTables = PlainStow('tidyTables', true, volatile: !_isOnMainIsolate);
+
   final printPageIndicators = PlainStow(
     'printPageIndicators',
     false,

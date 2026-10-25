@@ -756,6 +756,12 @@ class Translations$settings$prefLabels$en {
 	/// en: 'Auto straighten lines'
 	String get autoStraightenLines => 'Auto straighten lines';
 
+	/// en: 'Snap lines to horizontal and vertical'
+	String get snapLinesToAxes => 'Snap lines to horizontal and vertical';
+
+	/// en: 'Tidy tables'
+	String get tidyTables => 'Tidy tables';
+
 	/// en: 'Custom Saber folder'
 	String get customDataDir => 'Custom Saber folder';
 
@@ -811,6 +817,12 @@ class Translations$settings$prefDescriptions$en {
 
 	/// en: 'Straightens long lines without having to use the shape pen'
 	String get autoStraightenLines => 'Straightens long lines without having to use the shape pen';
+
+	/// en: 'Straightened lines that are almost level or upright become exactly level or upright'
+	String get snapLinesToAxes => 'Straightened lines that are almost level or upright become exactly level or upright';
+
+	/// en: 'Lines drawn with the shape pen snap to the lines and rectangles they touch, so tables become clean grids'
+	String get tidyTables => 'Lines drawn with the shape pen snap to the lines and rectangles they touch, so tables become clean grids';
 
 	/// en: 'Tell me about updates as soon as they're available'
 	String get shouldAlwaysAlertForUpdates => 'Tell me about updates as soon as they\'re available';

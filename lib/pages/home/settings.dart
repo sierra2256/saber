@@ -605,6 +605,18 @@ class _SettingsPageState extends State<SettingsPage> {
                   icon: Icons.straighten,
                   pref: stows.autoStraightenLines,
                 ),
+                SettingsSwitch(
+                  title: t.settings.prefLabels.snapLinesToAxes,
+                  subtitle: t.settings.prefDescriptions.snapLinesToAxes,
+                  icon: Icons.border_horizontal,
+                  pref: stows.snapLinesToAxes,
+                ),
+                SettingsSwitch(
+                  title: t.settings.prefLabels.tidyTables,
+                  subtitle: t.settings.prefDescriptions.tidyTables,
+                  icon: Icons.table_chart_outlined,
+                  pref: stows.tidyTables,
+                ),
                 SettingsSubtitle(subtitle: t.settings.prefCategories.advanced),
                 if (isSentryAvailable) const SettingsSentryConsent(),
                 if (Platform.isAndroid)
