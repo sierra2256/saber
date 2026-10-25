@@ -46,6 +46,7 @@ class Translations with BaseTranslations<AppLocale, Translations> {
 	late final Translations$appInfo$en appInfo = Translations$appInfo$en.internal(_root);
 	late final Translations$update$en update = Translations$update$en.internal(_root);
 	late final Translations$editor$en editor = Translations$editor$en.internal(_root);
+	late final Translations$quickMemo$en quickMemo = Translations$quickMemo$en.internal(_root);
 	late final Translations$handwriting$en handwriting = Translations$handwriting$en.internal(_root);
 }
 
@@ -339,6 +340,21 @@ class Translations$editor$en {
 
 	/// en: 'Saving your changes… You can safely exit the editor when it's done'
 	String get needsToSaveBeforeExiting => 'Saving your changes… You can safely exit the editor when it\'s done';
+}
+
+// Path: quickMemo
+class Translations$quickMemo$en {
+	Translations$quickMemo$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Quick memo'
+	String get title => 'Quick memo';
+
+	/// en: 'Done'
+	String get done => 'Done';
 }
 
 // Path: handwriting
