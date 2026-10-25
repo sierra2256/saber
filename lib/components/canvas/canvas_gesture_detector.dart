@@ -3,16 +3,19 @@ import 'dart:collection';
 import 'dart:math';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:keybinder/keybinder.dart';
 import 'package:saber/components/canvas/hud/canvas_hud.dart';
 import 'package:saber/components/canvas/interactive_canvas.dart';
+import 'package:saber/components/canvas/multi_finger_tap_detector.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
 import 'package:saber/data/prefs.dart';
+import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 import 'package:vector_math/vector_math_64.dart';
 
@@ -56,8 +59,12 @@ class CanvasGestureDetector extends StatefulWidget {
   final VoidCallback onHoveringEnd;
   final ValueChanged<bool> onStylusButtonChanged;
 
-  final VoidCallback undo;
-  final VoidCallback redo;
+  /// Undoes the last change, returning false if there was nothing to undo.
+  final bool Function() undo;
+
+  /// Redoes the last undone change,
+  /// returning false if there was nothing to redo.
+  final bool Function() redo;
 
   final List<EditorPage> pages;
   final int? initialPageIndex;
@@ -418,6 +425,47 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
         transformation;
   }
 
+  /// Two-finger tap to undo, three-finger tap to redo.
+  late final _multiFingerTapDetector = MultiFingerTapDetector(
+    onTap: onMultiFingerTap,
+  );
+
+  /// The text of the hint shown after a multi-finger tap, e.g. "Undo".
+  final multiFingerTapHint = ValueNotifier<String?>(null);
+  Timer? _multiFingerTapHintTimer;
+
+  @visibleForTesting
+  void onMultiFingerTap(int fingers) {
+    final String hint;
+    switch (fingers) {
+      case 2:
+        if (!widget.undo()) return;
+        hint = t.editor.toolbar.undo;
+      case 3:
+        if (!widget.redo()) return;
+        hint = t.editor.toolbar.redo;
+      default:
+        return;
+    }
+
+    multiFingerTapHint.value = hint;
+    _multiFingerTapHintTimer?.cancel();
+    _multiFingerTapHintTimer = Timer(
+      const Duration(milliseconds: 800),
+      () => multiFingerTapHint.value = null,
+    );
+  }
+
+  void _listenerPointerDownEvent(PointerDownEvent event) {
+    _multiFingerTapDetector.onPointerDown(event);
+    _listenerPointerEvent(event);
+  }
+
+  void _listenerPointerMoveEvent(PointerMoveEvent event) {
+    _multiFingerTapDetector.onPointerMove(event);
+    _listenerPointerEvent(event);
+  }
+
   void _listenerPointerEvent(PointerEvent event) {
     final isStylus =
         event.kind == PointerDeviceKind.stylus ||
@@ -476,7 +524,8 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     }
   }
 
-  void _listenerPointerUpEvent(PointerEvent event) {
+  void _listenerPointerUpEvent(PointerUpEvent event) {
+    _multiFingerTapDetector.onPointerUp(event);
     widget.updatePointerData(event.kind, null);
     if (stylusButtonWasPressed) {
       stylusButtonWasPressed = false;
@@ -491,9 +540,10 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     return Stack(
       children: [
         Listener(
-          onPointerDown: _listenerPointerEvent,
-          onPointerMove: _listenerPointerEvent,
+          onPointerDown: _listenerPointerDownEvent,
+          onPointerMove: _listenerPointerMoveEvent,
           onPointerUp: _listenerPointerUpEvent,
+          onPointerCancel: _multiFingerTapDetector.onPointerCancel,
           onPointerHover: _listenerPointerHoverEvent,
           child: GestureDetector(
             child: LayoutBuilder(
@@ -561,12 +611,19 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
             }),
           ),
         ),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: _MultiFingerTapHint(hint: multiFingerTapHint),
+          ),
+        ),
       ],
     );
   }
 
   @override
   void dispose() {
+    _multiFingerTapHintTimer?.cancel();
+    multiFingerTapHint.dispose();
     CanvasTransformCache.add(
       widget.filePath,
       widget._transformationController.value,
@@ -594,6 +651,42 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     final bottom = points.map((point) => point.y).reduce(max);
 
     return .fromLTRB(left, top, right, bottom);
+  }
+}
+
+/// Briefly shows e.g. "Undo" after a multi-finger tap.
+class _MultiFingerTapHint extends StatelessWidget {
+  const new({required this.hint});
+
+  final ValueListenable<String?> hint;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = ColorScheme.of(context);
+    return ValueListenableBuilder(
+      valueListenable: hint,
+      builder: (context, hint, child) => AnimatedOpacity(
+        opacity: hint == null ? 0 : 1,
+        duration: const Duration(milliseconds: 150),
+        child: hint == null
+            ? const SizedBox.shrink()
+            : Center(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colorScheme.inverseSurface.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Padding(
+                    padding: const .symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      hint,
+                      style: TextStyle(color: colorScheme.onInverseSurface),
+                    ),
+                  ),
+                ),
+              ),
+      ),
+    );
   }
 }
 

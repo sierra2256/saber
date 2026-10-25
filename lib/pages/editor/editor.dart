@@ -1399,8 +1399,16 @@ class EditorState extends State<Editor> {
       onHoveringEnd: onHoveringEnd,
       onStylusButtonChanged: onStylusButtonChanged,
       updatePointerData: updatePointerData,
-      undo: undo,
-      redo: redo,
+      undo: () {
+        if (!history.canUndo) return false;
+        undo();
+        return true;
+      },
+      redo: () {
+        if (!history.canRedo) return false;
+        redo();
+        return true;
+      },
       pages: coreInfo.pages,
       initialPageIndex: coreInfo.initialPageIndex,
       pageBuilder: pageBuilder,
