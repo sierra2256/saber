@@ -28,6 +28,7 @@ class CanvasPainter extends CustomPainter {
     required this.primaryColor,
     required this.page,
     required this.showPageIndicator,
+    this.showZoomBoxTarget = true,
     required this.pageIndex,
     required this.totalPages,
     required this.currentScale,
@@ -42,6 +43,10 @@ class CanvasPainter extends CustomPainter {
   final Color primaryColor;
   final EditorPage page;
   final bool showPageIndicator;
+
+  /// Whether to show the target area of the zoom writing box,
+  /// see [EditorPage.zoomBoxTarget].
+  final bool showZoomBoxTarget;
   final int pageIndex;
   final int totalPages;
   final double currentScale;
@@ -58,6 +63,7 @@ class CanvasPainter extends CustomPainter {
     _drawCurrentStroke(canvas);
     _drawDetectedShape(canvas);
     _drawSelection(canvas);
+    _drawZoomBoxTarget(canvas);
     _drawPageIndicator(canvas, size);
   }
 
@@ -303,6 +309,25 @@ class CanvasPainter extends CustomPainter {
       canvas.drawCircle(position, radius, linePaint..strokeWidth = 2 / scale);
       linePaint.strokeWidth = 1 / scale;
     }
+  }
+
+  void _drawZoomBoxTarget(Canvas canvas) {
+    if (!showZoomBoxTarget) return;
+    final target = page.zoomBoxTarget;
+    if (target == null) return;
+
+    final scale = currentScale > 0 ? currentScale : 1.0;
+    canvas.drawRect(
+      target,
+      Paint()..color = primaryColor.withValues(alpha: 0.08),
+    );
+    canvas.drawRect(
+      target,
+      Paint()
+        ..color = primaryColor
+        ..strokeWidth = 2 / scale
+        ..style = .stroke,
+    );
   }
 
   static const double _pageIndicatorFontSize = 20;

@@ -322,6 +322,7 @@ class Translations$editor$en {
 	/// en: 'Paste again'
 	String get pasteAgain => 'Paste again';
 
+	late final Translations$editor$zoomBox$en zoomBox = Translations$editor$zoomBox$en.internal(_root);
 	late final Translations$editor$menu$en menu = Translations$editor$menu$en.internal(_root);
 	late final Translations$editor$readOnlyBanner$en readOnlyBanner = Translations$editor$readOnlyBanner$en.internal(_root);
 	late final Translations$editor$versionTooNew$en versionTooNew = Translations$editor$versionTooNew$en.internal(_root);
@@ -1336,6 +1337,30 @@ class Translations$editor$elements$en {
 
 	/// en: 'Saved to elements'
 	String get saved => 'Saved to elements';
+}
+
+// Path: editor.zoomBox
+class Translations$editor$zoomBox$en {
+	Translations$editor$zoomBox$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Zoom writing box'
+	String get title => 'Zoom writing box';
+
+	/// en: 'Previous line'
+	String get lineUp => 'Previous line';
+
+	/// en: 'Move back'
+	String get back => 'Move back';
+
+	/// en: 'Move forward'
+	String get forward => 'Move forward';
+
+	/// en: 'New line'
+	String get newLine => 'New line';
 }
 
 // Path: editor.menu

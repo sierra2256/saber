@@ -348,6 +348,12 @@ editor:
     edit: Edit elements
     saved: Saved to elements
   pasteAgain: Paste again
+  zoomBox:
+    title: Zoom writing box
+    lineUp: Previous line
+    back: Move back
+    forward: Move forward
+    newLine: New line
   menu:
     clearPage: Clear page $page/$totalPages
     clearAllPages: Clear all pages

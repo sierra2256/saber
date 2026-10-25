@@ -63,6 +63,8 @@ class Toolbar extends StatefulWidget {
     required this.insertPage,
     required this.showPages,
     this.showingPages = false,
+    this.toggleZoomBox,
+    this.zoomBoxOpen = false,
     required this.showNoteSettings,
     this.rename,
   });
@@ -110,6 +112,10 @@ class Toolbar extends StatefulWidget {
 
   /// Whether the page sidebar is shown.
   final bool showingPages;
+
+  /// Opens or closes the zoom writing box.
+  final VoidCallback? toggleZoomBox;
+  final bool zoomBoxOpen;
   final VoidCallback showNoteSettings;
 
   /// Shown in the overflow menu when the title doesn't fit in the toolbar.
@@ -697,6 +703,13 @@ class _ToolbarState extends State<Toolbar> {
             onPressed: widget.readOnly ? null : widget.insertPage,
             child: Text(t.editor.menu.insertPage),
           ),
+          if (widget.toggleZoomBox != null)
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.zoom_in),
+              trailingIcon: widget.zoomBoxOpen ? const Icon(Icons.check) : null,
+              onPressed: widget.readOnly ? null : widget.toggleZoomBox,
+              child: Text(t.editor.zoomBox.title),
+            ),
           MenuItemButton(
             leadingIcon: const Icon(Symbols.stylus_laser_pointer),
             trailingIcon: widget.currentTool == LaserPointer.currentLaserPointer

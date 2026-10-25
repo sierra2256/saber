@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:collapsible/collapsible.dart';
 import 'package:file_picker/file_picker.dart';
@@ -21,6 +22,7 @@ import 'package:saber/components/canvas/canvas_gesture_detector.dart';
 import 'package:saber/components/canvas/canvas_image.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
+import 'package:saber/components/canvas/zoom_writing_box.dart';
 import 'package:saber/components/editor/read_only_banner.dart';
 import 'package:saber/components/theming/adaptive_alert_dialog.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
@@ -35,6 +37,7 @@ import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/editor_history.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/editor/zoom_box.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
@@ -607,7 +610,14 @@ class EditorState extends State<Editor> {
 
   void onDrawStart(ScaleStartDetails details) {
     final page = coreInfo.pages[dragPageIndex!];
-    final position = page.renderBox!.globalToLocal(details.focalPoint);
+    drawStartAt(page.renderBox!.globalToLocal(details.focalPoint));
+  }
+
+  /// Starts a draw gesture at [position] on page [dragPageIndex].
+  ///
+  /// This is used by [onDrawStart] and by the zoom writing box.
+  void drawStartAt(Offset position) {
+    final page = coreInfo.pages[dragPageIndex!];
     history.canRedo = false;
     _isDrawing = true;
 
@@ -664,7 +674,12 @@ class EditorState extends State<Editor> {
 
   void onDrawUpdate(ScaleUpdateDetails details) {
     final page = coreInfo.pages[dragPageIndex!];
-    final position = page.renderBox!.globalToLocal(details.focalPoint);
+    drawUpdateAt(page.renderBox!.globalToLocal(details.focalPoint));
+  }
+
+  /// Continues a draw gesture at [position] on page [dragPageIndex].
+  void drawUpdateAt(Offset position) {
+    final page = coreInfo.pages[dragPageIndex!];
     final offset = position - previousPosition;
 
     if (currentTool is Pen) {
@@ -1974,6 +1989,8 @@ class EditorState extends State<Editor> {
             );
           }),
           showingPages: showPageSidebar,
+          toggleZoomBox: toggleZoomBox,
+          zoomBoxOpen: zoomBox != null,
           showPages: () => _setPageSidebarShown(!showPageSidebar),
           showNoteSettings: () {
             showModalBottomSheet(
@@ -1993,7 +2010,13 @@ class EditorState extends State<Editor> {
     final pageSidebar = SafeArea(
       top: stows.editorToolbarAlignment.value != AxisDirection.up,
       bottom: stows.editorToolbarAlignment.value != AxisDirection.down,
-      child: _buildPageSidebar(context),
+      child: Column(
+        crossAxisAlignment: .stretch,
+        children: [
+          Expanded(child: _buildPageSidebar(context)),
+          if (zoomBox != null) _buildZoomBox(),
+        ],
+      ),
     );
 
     // The toolbar floats over the canvas so the page stays visible
@@ -2234,6 +2257,79 @@ class EditorState extends State<Editor> {
       },
       currentTool: currentTool,
       currentScale: _transformationController.value.approxScale,
+    );
+  }
+
+  /// The zoom writing box, or null if it's closed.
+  ZoomBox? zoomBox;
+
+  /// Opens the zoom writing box near the top of the visible part
+  /// of the current page, or closes it.
+  void toggleZoomBox() => setState(() {
+    final oldZoomBox = zoomBox;
+    if (oldZoomBox != null) {
+      zoomBox = null;
+      if (oldZoomBox.pageIndex < coreInfo.pages.length) {
+        coreInfo.pages[oldZoomBox.pageIndex]
+          ..zoomBoxTarget = null
+          ..redrawStrokes();
+      }
+      return;
+    }
+
+    final pageIndex = currentPageIndex;
+    final page = coreInfo.pages[pageIndex];
+    final height = coreInfo.lineHeight * 1.5;
+
+    var top = 0.0;
+    final editorBox = context.findRenderObject() as RenderBox?;
+    if (editorBox != null && page.renderBox != null) {
+      // a little below the top of the screen
+      top = page.renderBox!
+          .globalToLocal(editorBox.localToGlobal(const Offset(0, 200)))
+          .dy;
+    }
+    final zoomBoxLeft = page.size.width * ZoomBox.marginFraction;
+    zoomBox = ZoomBox(
+      pageIndex: pageIndex,
+      pageSize: page.size,
+      position: Offset(
+        zoomBoxLeft,
+        top.clamp(0, max(0, page.size.height - height)),
+      ),
+      height: height,
+    );
+  });
+
+  Widget _buildZoomBox() {
+    final zoomBox = this.zoomBox!;
+    return Padding(
+      padding: const .all(8),
+      child: ZoomWritingBox(
+        zoomBox: zoomBox,
+        coreInfo: coreInfo,
+        onDrawStart: (position) {
+          if (coreInfo.readOnly) return;
+          if (currentTool == Tool.textEditing) return;
+          dragPageIndex = zoomBox.pageIndex;
+          drawStartAt(position);
+        },
+        onDrawUpdate: (position) {
+          if (!_isDrawing) return;
+          drawUpdateAt(position);
+        },
+        onDrawEnd: () {
+          if (!_isDrawing) return;
+          onDrawEnd(ScaleEndDetails());
+        },
+        updatePointerData: updatePointerData,
+        onTargetChanged: (target) {
+          coreInfo.pages[zoomBox.pageIndex]
+            ..zoomBoxTarget = target
+            ..redrawStrokes();
+        },
+        onClose: toggleZoomBox,
+      ),
     );
   }
 
