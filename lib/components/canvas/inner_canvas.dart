@@ -103,89 +103,137 @@ class _InnerCanvasState extends State<InnerCanvas> {
           )
         : null;
 
+    CanvasPainter painter(
+      Set<CanvasPainterLayer> layers, {
+      required Listenable? repaint,
+    }) => CanvasPainter(
+      repaint: repaint,
+      layers: layers,
+      invert: invert,
+      strokes: page.strokes,
+      laserStrokes: page.laserStrokes,
+      currentStroke: widget.currentStroke,
+      currentSelection: widget.currentSelection,
+      primaryColor: colorScheme.primary,
+      page: page,
+      showPageIndicator: widget.showPageIndicator,
+      pageIndex: widget.pageIndex,
+      totalPages: widget.coreInfo.pages.length,
+      currentScale: widget.currentScale,
+      defaultTextStyle: theme.textTheme.bodyMedium!,
+    );
+
+    // Committed strokes only repaint when they change, not while drawing
+    final strokesRepaint = widget.redrawPageListenable != null
+        ? page.strokesListenable
+        : null;
+
+    // Each layer has its own repaint boundary, so drawing a new stroke
+    // only repaints the overlay, not every stroke on the page.
     return RepaintBoundary(
-      child: CustomPaint(
-        painter: CanvasBackgroundPainter(
-          invert: invert,
-          backgroundColor: () {
-            if (page.backgroundImage != null) {
-              return Colors.white;
-            } else {
-              return backgroundColor;
-            }
-          }(),
-          backgroundPattern: () {
-            if (page.backgroundImage != null) {
-              return CanvasBackgroundPattern.none;
-            } else {
-              return widget.coreInfo.backgroundPattern;
-            }
-          }(),
-          lineHeight: widget.coreInfo.lineHeight,
-          lineThickness: widget.coreInfo.lineThickness,
-          primaryColor: colorScheme.primary,
-          secondaryColor: colorScheme.secondary,
-        ),
-        foregroundPainter: CanvasPainter(
-          repaint: widget.redrawPageListenable,
-          invert: invert,
-          strokes: page.strokes,
-          laserStrokes: page.laserStrokes,
-          currentStroke: widget.currentStroke,
-          currentSelection: widget.currentSelection,
-          primaryColor: colorScheme.primary,
-          page: page,
-          showPageIndicator: widget.showPageIndicator,
-          pageIndex: widget.pageIndex,
-          totalPages: widget.coreInfo.pages.length,
-          currentScale: widget.currentScale,
-          defaultTextStyle: theme.textTheme.bodyMedium!,
-        ),
-        isComplex: true,
-        willChange: true,
-        child: SizedBox(
-          width: widget.width,
-          height: widget.height,
-          child: DeferredPointerHandler(
-            child: Stack(
-              children: [
-                if (page.backgroundImage != null)
-                  CanvasImage(
-                    filePath: widget.coreInfo.filePath,
-                    image: page.backgroundImage!,
-                    pageSize: Size(widget.width, widget.height),
-                    setAsBackground: null,
-                    isBackground: true,
-                    readOnly: true,
-                  ),
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  width: widget.width,
-                  height: widget.height,
-                  child: IgnorePointer(
-                    ignoring: widget.coreInfo.readOnly || !widget.textEditing,
-                    child: quillEditor,
+      child: Stack(
+        children: [
+          RepaintBoundary(
+            child: CustomPaint(
+              painter: CanvasBackgroundPainter(
+                invert: invert,
+                backgroundColor: () {
+                  if (page.backgroundImage != null) {
+                    return Colors.white;
+                  } else {
+                    return backgroundColor;
+                  }
+                }(),
+                backgroundPattern: () {
+                  if (page.backgroundImage != null) {
+                    return CanvasBackgroundPattern.none;
+                  } else {
+                    return widget.coreInfo.backgroundPattern;
+                  }
+                }(),
+                lineHeight: widget.coreInfo.lineHeight,
+                lineThickness: widget.coreInfo.lineThickness,
+                primaryColor: colorScheme.primary,
+                secondaryColor: colorScheme.secondary,
+              ),
+              // Highlighters are in the same layer as the background,
+              // images and text, since they blend with them.
+              foregroundPainter: painter(const {
+                CanvasPainterLayer.highlighters,
+              }, repaint: strokesRepaint),
+              isComplex: true,
+              child: SizedBox(
+                width: widget.width,
+                height: widget.height,
+                child: DeferredPointerHandler(
+                  child: Stack(
+                    children: [
+                      if (page.backgroundImage != null)
+                        CanvasImage(
+                          filePath: widget.coreInfo.filePath,
+                          image: page.backgroundImage!,
+                          pageSize: Size(widget.width, widget.height),
+                          setAsBackground: null,
+                          isBackground: true,
+                          readOnly: true,
+                        ),
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        width: widget.width,
+                        height: widget.height,
+                        child: IgnorePointer(
+                          ignoring:
+                              widget.coreInfo.readOnly || !widget.textEditing,
+                          child: quillEditor,
+                        ),
+                      ),
+                      for (int i = 0; i < page.images.length; i++)
+                        CanvasImage(
+                          filePath: widget.coreInfo.filePath,
+                          image: page.images[i],
+                          pageSize: Size(widget.width, widget.height),
+                          setAsBackground: widget.setAsBackground,
+                          readOnly:
+                              widget.coreInfo.readOnly ||
+                              !widget.currentToolIsSelect,
+                          selected:
+                              widget.currentSelection?.images.contains(
+                                page.images[i],
+                              ) ??
+                              false,
+                        ),
+                    ],
                   ),
                 ),
-                for (int i = 0; i < page.images.length; i++)
-                  CanvasImage(
-                    filePath: widget.coreInfo.filePath,
-                    image: page.images[i],
-                    pageSize: Size(widget.width, widget.height),
-                    setAsBackground: widget.setAsBackground,
-                    readOnly:
-                        widget.coreInfo.readOnly || !widget.currentToolIsSelect,
-                    selected:
-                        widget.currentSelection?.images.contains(
-                          page.images[i],
-                        ) ??
-                        false,
-                  ),
-              ],
+              ),
             ),
           ),
-        ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: painter(const {
+                    CanvasPainterLayer.ink,
+                  }, repaint: strokesRepaint),
+                  isComplex: true,
+                ),
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: painter(const {
+                    CanvasPainterLayer.overlay,
+                  }, repaint: widget.redrawPageListenable),
+                  willChange: true,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

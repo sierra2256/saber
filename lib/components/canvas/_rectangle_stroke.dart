@@ -61,7 +61,7 @@ class RectangleStroke extends Stroke {
     );
   }
   @override
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toJson({bool packPoints = false}) {
     return {
       'shape': 'rect',
       'i': pageIndex,
@@ -207,6 +207,9 @@ class RectangleStroke extends Stroke {
       ..options.isComplete = true;
     return stroke;
   }
+
+  @override
+  int get contentHash => Object.hash(super.contentHash, rect);
 
   @override
   RectangleStroke copy() => RectangleStroke(

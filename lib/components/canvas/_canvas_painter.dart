@@ -10,6 +10,7 @@ import 'package:saber/components/canvas/_rectangle_stroke.dart';
 import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/extensions/color_extensions.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:saber/data/tools/select.dart';
@@ -17,9 +18,32 @@ import 'package:saber/data/tools/selection_transform.dart';
 import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/data/tools/tape.dart';
 
+/// The parts of a page that [CanvasPainter] draws.
+///
+/// The editor draws each layer separately, so that drawing a new stroke
+/// only repaints [overlay] instead of every stroke on the page.
+enum CanvasPainterLayer {
+  /// Highlighter strokes, which blend with what's below them
+  /// (the page background, images and text), and the page indicator.
+  ///
+  /// The page indicator is drawn here, in the same layer as images and
+  /// text, so that it repaints with them (e.g. when fonts finish loading).
+  highlighters,
+
+  /// All other strokes and tape.
+  ink,
+
+  /// What changes while drawing: the current stroke, the detected shape,
+  /// laser strokes, the selection and the zoom writing box's target.
+  overlay;
+
+  static const all = {highlighters, ink, overlay};
+}
+
 class CanvasPainter extends CustomPainter {
   const new({
     super.repaint,
+    this.layers = CanvasPainterLayer.all,
     this.invert = false,
     required this.strokes,
     required this.laserStrokes,
@@ -35,6 +59,7 @@ class CanvasPainter extends CustomPainter {
     required this.defaultTextStyle,
   });
 
+  final Set<CanvasPainterLayer> layers;
   final bool invert;
   final List<Stroke> strokes;
   final List<LaserStroke> laserStrokes;
@@ -56,19 +81,32 @@ class CanvasPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final canvasRect = Offset.zero & size;
 
-    _drawHighlighterStrokes(canvas, canvasRect);
-    _drawNonHighlighterStrokes(canvas);
-    _drawTapes(canvas);
-    for (final stroke in laserStrokes) _drawLaserStroke(canvas, stroke);
-    _drawCurrentStroke(canvas);
-    _drawDetectedShape(canvas);
-    _drawSelection(canvas);
-    _drawZoomBoxTarget(canvas);
-    _drawPageIndicator(canvas, size);
+    if (layers.contains(CanvasPainterLayer.highlighters)) {
+      _drawHighlighterStrokes(canvas, canvasRect);
+      _drawPageIndicator(canvas, size);
+    }
+    if (layers.contains(CanvasPainterLayer.ink)) {
+      _drawNonHighlighterStrokes(canvas);
+      _drawTapes(canvas);
+    }
+    if (layers.contains(CanvasPainterLayer.overlay)) {
+      for (final stroke in laserStrokes) _drawLaserStroke(canvas, stroke);
+      _drawCurrentStroke(canvas);
+      _drawDetectedShape(canvas);
+      _drawSelection(canvas);
+      _drawZoomBoxTarget(canvas);
+    }
   }
 
   @override
   bool shouldRepaint(CanvasPainter oldDelegate) {
+    // Strokes can change in place (e.g. when moved or recolored),
+    // and these layers only rebuild occasionally (not while drawing),
+    // so always repaint them when they rebuild.
+    if (layers.contains(CanvasPainterLayer.highlighters) ||
+        layers.contains(CanvasPainterLayer.ink)) {
+      return true;
+    }
     return false ||
         // Current stroke is being drawn, so always repaint if present
         (currentStroke != null || oldDelegate.currentStroke != null) ||
@@ -234,14 +272,16 @@ class CanvasPainter extends CustomPainter {
         break;
       case DefaultUnistrokeNames.line:
         var (firstPoint, lastPoint) = shape.convertToLine();
-        (firstPoint, lastPoint) = Stroke.snapLine(
-          firstPoint is PointVector
-              ? firstPoint
-              : PointVector.fromOffset(offset: firstPoint),
-          lastPoint is PointVector
-              ? lastPoint
-              : PointVector.fromOffset(offset: lastPoint),
-        );
+        if (stows.snapLinesToAxes.value) {
+          (firstPoint, lastPoint) = Stroke.snapLine(
+            firstPoint is PointVector
+                ? firstPoint
+                : PointVector.fromOffset(offset: firstPoint),
+            lastPoint is PointVector
+                ? lastPoint
+                : PointVector.fromOffset(offset: lastPoint),
+          );
+        }
         canvas.drawLine(firstPoint, lastPoint, shapePaint);
       case DefaultUnistrokeNames.rectangle:
         final rect = shape.convertToRect();

@@ -14,8 +14,11 @@ abstract class RoutePaths {
 
   static const prefixOfHome = '/home';
 
-  static String editFilePath(String filePath) {
-    return '$edit?path=${Uri.encodeQueryComponent(filePath)}';
+  /// The route to open the note at [filePath],
+  /// optionally scrolled to [pageIndex].
+  static String editFilePath(String filePath, {int? pageIndex}) {
+    return '$edit?path=${Uri.encodeQueryComponent(filePath)}'
+        '${pageIndex != null ? '&page=$pageIndex' : ''}';
   }
 
   static String editImportPdf(String filePath, String pdfPath) {

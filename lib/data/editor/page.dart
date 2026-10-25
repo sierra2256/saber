@@ -176,17 +176,33 @@ class EditorPage extends ChangeNotifier implements HasSize {
     );
   }
 
-  Map<String, dynamic> toJson(OrderedAssetCache assets) => {
+  Map<String, dynamic> toJson(
+    OrderedAssetCache assets, {
+    bool packStrokePoints = false,
+  }) => {
     'w': size.width,
     'h': size.height,
     if (strokes.isNotEmpty)
-      's': strokes.map((stroke) => stroke.toJson()).toList(),
+      's': strokes
+          .map((stroke) => stroke.toJson(packPoints: packStrokePoints))
+          .toList(),
     if (images.isNotEmpty)
       'i': images.map((image) => image.toJson(assets)).toList(),
     if (!quill.controller.document.isEmpty())
       'q': quill.controller.document.toDelta().toJson(),
     if (backgroundImage != null) 'b': backgroundImage?.toJson(assets),
   };
+
+  /// A cheap hash of how this page looks, used to tell whether it changed,
+  /// e.g. to skip regenerating a note's thumbnail.
+  /// This is only stable within one run of the app.
+  int get contentHash => Object.hash(
+    size,
+    Object.hashAll(strokes.map((stroke) => stroke.contentHash)),
+    Object.hashAll(images.map((image) => Object.hash(image, image.dstRect))),
+    backgroundImage,
+    quill.controller.document.toPlainText(),
+  );
 
   /// Inserts a stroke, while keeping the strokes sorted by
   /// pen type and color.
@@ -282,7 +298,21 @@ class EditorPage extends ChangeNotifier implements HasSize {
 
   /// Triggers a redraw of the strokes. If you need to redraw images,
   /// call [setState] instead.
+  /// Notified when the committed strokes change,
+  /// but not while a new stroke is being drawn.
+  /// See [redrawStrokes] and [redrawCurrentStroke].
+  final strokesListenable = _RepaintNotifier();
+
+  /// Redraws everything on the page, e.g. after strokes are erased or moved.
   void redrawStrokes() {
+    notifyListeners();
+    strokesListenable.notify();
+  }
+
+  /// Only redraws what's being drawn on top of the page
+  /// (the current stroke, the lasso, laser strokes...),
+  /// which is much cheaper than [redrawStrokes] on pages with many strokes.
+  void redrawCurrentStroke() {
     notifyListeners();
   }
 
@@ -303,6 +333,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
       image.dispose();
     }
     backgroundImage?.dispose();
+    strokesListenable.dispose();
     super.dispose();
   }
 
@@ -316,6 +347,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
     quill.dispose();
     _pencilShader?.dispose();
     isRendered = false;
+    strokesListenable.dispose();
     super.dispose();
   }
 
@@ -370,4 +402,8 @@ class QuillStruct {
     ),
     focusNode: FocusNode(debugLabel: 'Screenshot Quill Focus Node'),
   );
+}
+
+class _RepaintNotifier extends ChangeNotifier {
+  void notify() => notifyListeners();
 }

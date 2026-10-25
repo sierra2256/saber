@@ -24,6 +24,8 @@ import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
 import 'package:saber/components/canvas/zoom_writing_box.dart';
 import 'package:saber/components/editor/read_only_banner.dart';
+import 'package:saber/components/handwriting/convert_to_text_dialog.dart';
+import 'package:saber/components/handwriting/handwriting_setup.dart';
 import 'package:saber/components/theming/adaptive_alert_dialog.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/components/theming/saber_theme.dart';
@@ -41,6 +43,7 @@ import 'package:saber/data/editor/zoom_box.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
+import 'package:saber/data/handwriting/handwriting_recognizer.dart';
 import 'package:saber/data/nextcloud/saber_syncer.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
@@ -52,6 +55,7 @@ import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/tools/selection_transform.dart';
 import 'package:saber/data/tools/shape_pen.dart';
+import 'package:saber/data/tools/table_tidier.dart';
 import 'package:saber/data/tools/tape.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/home/whiteboard.dart';
@@ -76,17 +80,26 @@ class _ElementPaste extends _LastPaste {
 }
 
 class Editor extends StatefulWidget {
-  new({super.key, String? path, this.customTitle, this.pdfPath})
-    : initialPath = path != null
-          ? Future.value(path)
-          : FileManager.newFilePath('/'),
-      needsNaming = path == null;
+  new({
+    super.key,
+    String? path,
+    this.customTitle,
+    this.pdfPath,
+    this.initialPageIndex,
+  }) : initialPath = path != null
+           ? Future.value(path)
+           : FileManager.newFilePath('/'),
+       needsNaming = path == null;
 
   final Future<String> initialPath;
   final bool needsNaming;
 
   final String? customTitle;
   final String? pdfPath;
+
+  /// The page to scroll to when the note is opened,
+  /// e.g. from a search result.
+  final int? initialPageIndex;
 
   /// The file extension used by the app.
   /// Files with this extension are
@@ -242,6 +255,12 @@ class EditorState extends State<Editor> {
 
   Future _loadCoreInfo(String filePath) async {
     coreInfo = await EditorCoreInfo.loadFromFilePath(filePath);
+    if (widget.initialPageIndex case final pageIndex?
+        when pageIndex < coreInfo.pages.length) {
+      coreInfo.initialPageIndex = pageIndex;
+      // don't restore the last scroll position instead
+      CanvasGestureDetector.forgetTransform(filePath);
+    }
     if (coreInfo.readOnly) {
       log.info('Loaded file as read-only: ${coreInfo.readOnlyReason}');
     }
@@ -684,7 +703,8 @@ class EditorState extends State<Editor> {
 
     if (currentTool is Pen) {
       (currentTool as Pen).onDragUpdate(position, currentPressure);
-      page.redrawStrokes();
+      // only the new stroke changed
+      page.redrawCurrentStroke();
     } else if (currentTool is Eraser) {
       _erase(currentTool as Eraser, position, page);
       page.redrawStrokes();
@@ -692,6 +712,7 @@ class EditorState extends State<Editor> {
       final select = currentTool as Select;
       if (_selectionTransformer != null) {
         _selectionTransformer!.update(position);
+        page.redrawStrokes();
       } else if (select.doneSelecting) {
         for (final stroke in select.selectResult.strokes) {
           stroke.shift(offset);
@@ -700,13 +721,15 @@ class EditorState extends State<Editor> {
           image.dstRect = image.dstRect.shift(offset);
         }
         select.selectResult.path = select.selectResult.path.shift(offset);
+        page.redrawStrokes();
       } else {
         select.onDragUpdate(position);
+        // only the lasso changed
+        page.redrawCurrentStroke();
       }
-      page.redrawStrokes();
     } else if (currentTool is LaserPointer) {
       (currentTool as LaserPointer).onDragUpdate(position);
-      page.redrawStrokes();
+      page.redrawCurrentStroke();
     }
     previousPosition = position;
     moveOffset += offset;
@@ -717,7 +740,7 @@ class EditorState extends State<Editor> {
     bool shouldSave = true;
     setState(() {
       if (currentTool is Pen) {
-        final newStroke = (currentTool as Pen).onDragEnd();
+        var newStroke = (currentTool as Pen).onDragEnd();
         if (newStroke == null) return;
         if (newStroke.isEmpty) return;
 
@@ -731,23 +754,50 @@ class EditorState extends State<Editor> {
             return;
           }
           // Tape is always straight
-          newStroke.convertToLine();
+          newStroke.convertToLine(snapToAxes: stows.snapLinesToAxes.value);
         } else if (stows.autoStraightenLines.value &&
             currentTool is! ShapePen &&
             newStroke.isStraightLine()) {
-          newStroke.convertToLine();
+          newStroke.convertToLine(snapToAxes: stows.snapLinesToAxes.value);
+        }
+
+        var tidiedStrokes = const <Stroke, Stroke>{};
+        if (currentTool is ShapePen && stows.tidyTables.value) {
+          // snap table lines to each other
+          final tidied = TableTidier.tidy(newStroke, page.strokes);
+          newStroke = tidied.newStroke;
+          tidiedStrokes = tidied.changed;
         }
 
         createPage(newStroke.pageIndex);
+        for (final MapEntry(key: oldStroke, value: tidiedStroke)
+            in tidiedStrokes.entries) {
+          final index = page.strokes.indexOf(oldStroke);
+          if (index >= 0) page.strokes[index] = tidiedStroke;
+        }
         page.insertStroke(newStroke);
-        history.recordChange(
-          EditorHistoryItem(
-            type: .draw,
-            pageIndex: dragPageIndex!,
-            strokes: [newStroke],
-            images: [],
-          ),
-        );
+        if (tidiedStrokes.isEmpty) {
+          history.recordChange(
+            EditorHistoryItem(
+              type: .draw,
+              pageIndex: dragPageIndex!,
+              strokes: [newStroke],
+              images: [],
+            ),
+          );
+        } else {
+          // one history item, so undo removes the new line
+          // and restores the lines it snapped
+          history.recordChange(
+            EditorHistoryItem(
+              type: .replaceStrokes,
+              pageIndex: dragPageIndex!,
+              strokes: tidiedStrokes.keys.toList(),
+              newStrokes: [...tidiedStrokes.values, newStroke],
+              images: [],
+            ),
+          );
+        }
       } else if (currentTool is Eraser) {
         final eraser = currentTool as Eraser;
         if (_toolBeforeStylusButton == null &&
@@ -825,7 +875,7 @@ class EditorState extends State<Editor> {
       } else if (currentTool is LaserPointer) {
         shouldSave = false;
         final newStroke = (currentTool as LaserPointer).onDragEnd(
-          page.redrawStrokes,
+          page.redrawCurrentStroke,
           (Stroke stroke) {
             page.laserStrokes.remove(stroke);
           },
@@ -1052,6 +1102,8 @@ class EditorState extends State<Editor> {
   }
 
   void autosaveAfterDelay() {
+    // [saveToFile] saves again afterwards if anything changed meanwhile
+    if (savingState.value == .saving) return;
     if (history.isCurrentStateSaved) return cancelAutosaveAndMarkSaved();
 
     late final void Function() callback;
@@ -1105,11 +1157,15 @@ class EditorState extends State<Editor> {
     await _renameFileNow();
 
     final filePath = coreInfo.filePath + Editor.extension;
+    // The note can change while it's being saved,
+    // so remember which change is being saved.
+    final savedChange = history.lastChange;
     final Uint8List bson;
     final OrderedAssetCache assets;
     coreInfo.assetCache.allowRemovingAssets = false;
     try {
-      (bson, assets) = coreInfo.saveToBinary(
+      // large notes are encoded on another isolate to avoid freezing
+      (bson, assets) = await coreInfo.saveToBinaryInBackground(
         currentPageIndex: currentPageIndex,
       );
     } finally {
@@ -1130,8 +1186,14 @@ class EditorState extends State<Editor> {
               ),
         FileManager.removeUnusedAssets(filePath, numAssets: assets.length),
       ]);
-      savingState.value = .saved;
-      history.markLastChangeAsSaved();
+      history.markChangeAsSaved(savedChange);
+      if (history.isCurrentStateSaved) {
+        savingState.value = .saved;
+      } else {
+        // something changed while saving, so save again later
+        savingState.value = .waitingToSave;
+        autosaveAfterDelay();
+      }
     } catch (e, st) {
       log.severe('Failed to save file: $e', e, st);
       savingState.value = .waitingToSave;
@@ -1141,6 +1203,18 @@ class EditorState extends State<Editor> {
 
     if (!mounted) return;
     final page = coreInfo.pages.first;
+
+    // Only regenerate the thumbnail if the first page changed
+    final thumbnailHash = Object.hash(
+      page.contentHash,
+      coreInfo.backgroundPattern,
+      coreInfo.backgroundColor,
+      coreInfo.lineHeight,
+      coreInfo.lineThickness,
+    );
+    if (thumbnailHash == _lastThumbnailHash) return;
+    _lastThumbnailHash = thumbnailHash;
+
     final previewHeight = page.previewHeight(lineHeight: coreInfo.lineHeight);
     final thumbnailSize = Size(720, 720 * previewHeight / page.size.width);
     final thumbnail = await EditorExporter.screenshotPage(
@@ -1160,6 +1234,9 @@ class EditorState extends State<Editor> {
       awaitWrite: true,
     );
   }
+
+  /// See [saveToFile].
+  int? _lastThumbnailHash;
 
   late final _filenameFormKey = GlobalKey<FormState>();
   late final filenameTextEditingController = TextEditingController();
@@ -1563,6 +1640,76 @@ class EditorState extends State<Editor> {
         ?.showSnackBar(SnackBar(content: Text(t.editor.elements.saved)));
   }
 
+  /// Recognizes the handwriting in the current selection, then copies
+  /// the text or replaces the strokes with typed text on the page.
+  Future<void> convertSelectionToText() async {
+    final select = Select.currentSelect;
+    if (!select.doneSelecting) return;
+    final strokes = select.selectResult.strokes
+        .where(HandwritingRecognizer.isHandwriting)
+        .toList();
+    if (strokes.isEmpty) return;
+
+    if (!await HandwritingSetup.ensureEnabled(context)) return;
+    if (!mounted) return;
+
+    final result = await showDialog<ConvertToTextResult>(
+      context: context,
+      builder: (context) => ConvertToTextDialog(strokes: strokes),
+    );
+    if (result == null || !mounted) return;
+
+    switch (result.action) {
+      case .copy:
+        await Clipboard.setData(ClipboardData(text: result.text));
+        if (!mounted) return;
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(SnackBar(content: Text(t.handwriting.convert.copied)));
+      case .replace:
+        replaceStrokesWithText(strokes, result.text);
+    }
+  }
+
+  /// Removes [strokes] and adds [text] to the end of the typed text
+  /// on their page.
+  ///
+  /// Typed text in Saber flows from the top of the page,
+  /// so the text can't be placed exactly where the strokes were.
+  @visibleForTesting
+  void replaceStrokesWithText(List<Stroke> strokes, String text) {
+    if (coreInfo.readOnly || strokes.isEmpty) return;
+    final pageIndex = strokes.first.pageIndex;
+    final page = coreInfo.pages[pageIndex];
+
+    setState(() {
+      for (final stroke in strokes) {
+        page.strokes.remove(stroke);
+      }
+      history.recordChange(
+        EditorHistoryItem(
+          type: .erase,
+          pageIndex: pageIndex,
+          strokes: strokes,
+          images: [],
+        ),
+      );
+      Select.currentSelect.unselect();
+
+      final controller = page.quill.controller;
+      final document = controller.document;
+      // documents always end with a newline
+      final index = document.length - 1;
+      controller.replaceText(
+        index,
+        0,
+        document.isEmpty() ? text : '\n$text',
+        null,
+      );
+    });
+    autosaveAfterDelay();
+  }
+
   /// Inserts [element] at [globalPosition], or in the middle of the
   /// visible part of the current page if [globalPosition] is null.
   void insertElement(CanvasElement element, {Offset? globalPosition}) {
@@ -1939,6 +2086,9 @@ class EditorState extends State<Editor> {
           pasteAgain: _lastPaste == null ? null : pasteAgain,
           insertElement: insertElement,
           saveSelectionAsElement: saveSelectionAsElement,
+          convertSelectionToText: HandwritingRecognizer.instance.isSupported
+              ? convertSelectionToText
+              : null,
           exportAsSba: exportAsSba,
           exportAsPdf: exportAsPdf,
           exportAsPng: exportAsPng,
@@ -2272,7 +2422,7 @@ class EditorState extends State<Editor> {
       if (oldZoomBox.pageIndex < coreInfo.pages.length) {
         coreInfo.pages[oldZoomBox.pageIndex]
           ..zoomBoxTarget = null
-          ..redrawStrokes();
+          ..redrawCurrentStroke();
       }
       return;
     }
@@ -2326,7 +2476,7 @@ class EditorState extends State<Editor> {
         onTargetChanged: (target) {
           coreInfo.pages[zoomBox.pageIndex]
             ..zoomBoxTarget = target
-            ..redrawStrokes();
+            ..redrawCurrentStroke();
         },
         onClose: toggleZoomBox,
       ),
@@ -2348,16 +2498,16 @@ class EditorState extends State<Editor> {
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
           onEnd: () => setState(() => _pageSidebarAnimating = false),
-          child: Offstage(
-            offstage: !showPageSidebar && !_pageSidebarAnimating,
-            child: pageManager(context),
-          ),
+          // Only build the sidebar (and its thumbnails) while it's visible
+          child: showPageSidebar || _pageSidebarAnimating
+              ? pageManager(context)
+              : const SizedBox.shrink(),
         ),
       ),
     );
   }
 
-  /// The sidebar is kept offstage when hidden, except while it's sliding out.
+  /// The sidebar isn't built when hidden, except while it's sliding out.
   var _pageSidebarAnimating = false;
 
   void _setPageSidebarShown(bool shown) => setState(() {

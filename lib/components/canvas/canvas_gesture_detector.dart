@@ -124,6 +124,11 @@ class CanvasGestureDetector extends StatefulWidget {
     );
   }
 
+  /// Forgets the last scroll position of the note at [filePath],
+  /// so it isn't restored when the note is opened again.
+  static void forgetTransform(String filePath) =>
+      CanvasTransformCache.remove(filePath);
+
   static int getPageIndex({
     required double scrollY,
     required List<EditorPage> pages,
@@ -770,6 +775,14 @@ class CanvasTransformCache {
       return _cache.firstWhere((item) => item.filePath == filePath);
     } on StateError {
       return null;
+    }
+  }
+
+  static void remove(String filePath) {
+    for (final entry in _cache) {
+      if (entry.filePath != filePath) continue;
+      entry.unlink();
+      return;
     }
   }
 

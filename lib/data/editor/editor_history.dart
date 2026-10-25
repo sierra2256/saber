@@ -93,6 +93,17 @@ class EditorHistory {
     _lastSaved = _past.lastOrNull;
   }
 
+  /// The most recent change, or null if there are none.
+  EditorHistoryItem? get lastChange => _past.lastOrNull;
+
+  /// Marks [change] (from [lastChange]) as saved to disk.
+  ///
+  /// Use this when the note could change while it's being saved,
+  /// so changes made during the save aren't marked as saved.
+  void markChangeAsSaved(EditorHistoryItem? change) {
+    _lastSaved = change;
+  }
+
   /// Whether the current state is saved to disk.
   ///
   /// Note that this explicitly checks the last change in the history,

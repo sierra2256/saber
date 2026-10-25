@@ -60,6 +60,7 @@ class Eraser extends Tool {
     for (int i = 0; i < strokes.length; i++) {
       final stroke = strokes[i];
       if (!_canErase(stroke)) continue;
+      if (!_isNear(eraserPos, stroke)) continue;
       if (_shouldStrokeBeErased(eraserPos, stroke, sqrSize)) {
         overlapping.add(stroke);
         _markErased(stroke);
@@ -81,6 +82,7 @@ class Eraser extends Tool {
     for (int i = 0; i < strokes.length; i++) {
       final stroke = strokes[i];
       if (!_canErase(stroke)) continue;
+      if (!_isNear(eraserPos, stroke)) continue;
 
       final List<Stroke> pieces;
       if (stroke is CircleStroke || stroke is RectangleStroke) {
@@ -119,6 +121,13 @@ class Eraser extends Tool {
     _created = [];
     return result;
   }
+
+  /// A quick check of whether [stroke]'s bounding box is within reach
+  /// of the eraser, so strokes far away aren't checked point by point.
+  bool _isNear(Offset eraserPos, Stroke stroke) => stroke.lowQualityPath
+      .getBounds()
+      .inflate(size + stroke.options.size / 2)
+      .contains(eraserPos);
 
   bool _canErase(Stroke stroke) {
     if (highlighterOnly && stroke.toolId != .highlighter) return false;

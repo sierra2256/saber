@@ -46,6 +46,7 @@ class Translations with BaseTranslations<AppLocale, Translations> {
 	late final Translations$appInfo$en appInfo = Translations$appInfo$en.internal(_root);
 	late final Translations$update$en update = Translations$update$en.internal(_root);
 	late final Translations$editor$en editor = Translations$editor$en.internal(_root);
+	late final Translations$handwriting$en handwriting = Translations$handwriting$en.internal(_root);
 }
 
 // Path: common
@@ -337,6 +338,18 @@ class Translations$editor$en {
 
 	/// en: 'Saving your changes… You can safely exit the editor when it's done'
 	String get needsToSaveBeforeExiting => 'Saving your changes… You can safely exit the editor when it\'s done';
+}
+
+// Path: handwriting
+class Translations$handwriting$en {
+	Translations$handwriting$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+	late final Translations$handwriting$setup$en setup = Translations$handwriting$setup$en.internal(_root);
+	late final Translations$handwriting$convert$en convert = Translations$handwriting$convert$en.internal(_root);
+	late final Translations$handwriting$search$en search = Translations$handwriting$search$en.internal(_root);
 }
 
 // Path: home.tabs
@@ -713,6 +726,9 @@ class Translations$settings$prefLabels$en {
 	/// en: 'Hold the stylus button for'
 	String get stylusButtonAction => 'Hold the stylus button for';
 
+	/// en: 'Handwriting recognition'
+	String get handwritingRecognition => 'Handwriting recognition';
+
 	/// en: 'Hide the finger drawing toggle'
 	String get hideFingerDrawingToggle => 'Hide the finger drawing toggle';
 
@@ -739,6 +755,12 @@ class Translations$settings$prefLabels$en {
 
 	/// en: 'Auto straighten lines'
 	String get autoStraightenLines => 'Auto straighten lines';
+
+	/// en: 'Snap lines to horizontal and vertical'
+	String get snapLinesToAxes => 'Snap lines to horizontal and vertical';
+
+	/// en: 'Tidy tables'
+	String get tidyTables => 'Tidy tables';
 
 	/// en: 'Custom Saber folder'
 	String get customDataDir => 'Custom Saber folder';
@@ -770,6 +792,9 @@ class Translations$settings$prefDescriptions$en {
 	/// en: 'Automatically switches back to the pen after using the eraser'
 	String get disableEraserAfterUse => 'Automatically switches back to the pen after using the eraser';
 
+	/// en: 'Search and convert handwriting, on this device only'
+	String get handwritingRecognition => 'Search and convert handwriting, on this device only';
+
 	/// en: 'Larger images will be compressed'
 	String get maxImageSize => 'Larger images will be compressed';
 
@@ -792,6 +817,12 @@ class Translations$settings$prefDescriptions$en {
 
 	/// en: 'Straightens long lines without having to use the shape pen'
 	String get autoStraightenLines => 'Straightens long lines without having to use the shape pen';
+
+	/// en: 'Straightened lines that are almost level or upright become exactly level or upright'
+	String get snapLinesToAxes => 'Straightened lines that are almost level or upright become exactly level or upright';
+
+	/// en: 'Lines drawn with the shape pen snap to the lines and rectangles they touch, so tables become clean grids'
+	String get tidyTables => 'Lines drawn with the shape pen snap to the lines and rectangles they touch, so tables become clean grids';
 
 	/// en: 'Tell me about updates as soon as they're available'
 	String get shouldAlwaysAlertForUpdates => 'Tell me about updates as soon as they\'re available';
@@ -1490,6 +1521,81 @@ class Translations$editor$hud$en {
 
 	/// en: 'Lock panning to horizontal or vertical'
 	String get lockAxisAlignedPan => 'Lock panning to horizontal or vertical';
+}
+
+// Path: handwriting.setup
+class Translations$handwriting$setup$en {
+	Translations$handwriting$setup$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Handwriting recognition'
+	String get title => 'Handwriting recognition';
+
+	/// en: 'Saber can recognize your handwriting so you can search it and convert it to text. Your handwriting is recognized on this device and is never uploaded. This uses Google's ML Kit, which needs to download an English handwriting model (about 20 MB) once, and which may send anonymous usage statistics to Google.'
+	String get description => 'Saber can recognize your handwriting so you can search it and convert it to text. Your handwriting is recognized on this device and is never uploaded. This uses Google\'s ML Kit, which needs to download an English handwriting model (about 20 MB) once, and which may send anonymous usage statistics to Google.';
+
+	/// en: 'Download'
+	String get download => 'Download';
+
+	/// en: 'Downloading the handwriting model…'
+	String get downloading => 'Downloading the handwriting model…';
+
+	/// en: 'Couldn't download the handwriting model. Check your connection and try again.'
+	String get downloadFailed => 'Couldn\'t download the handwriting model. Check your connection and try again.';
+}
+
+// Path: handwriting.convert
+class Translations$handwriting$convert$en {
+	Translations$handwriting$convert$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Convert to text'
+	String get convertToText => 'Convert to text';
+
+	/// en: 'Recognizing handwriting…'
+	String get recognizing => 'Recognizing handwriting…';
+
+	/// en: 'No handwriting was recognized'
+	String get nothingRecognized => 'No handwriting was recognized';
+
+	/// en: 'Copy'
+	String get copy => 'Copy';
+
+	/// en: 'Copied to clipboard'
+	String get copied => 'Copied to clipboard';
+
+	/// en: 'Replace with text'
+	String get replace => 'Replace with text';
+}
+
+// Path: handwriting.search
+class Translations$handwriting$search$en {
+	Translations$handwriting$search$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Search'
+	String get search => 'Search';
+
+	/// en: 'Search notes and handwriting'
+	String get hint => 'Search notes and handwriting';
+
+	/// en: 'No results'
+	String get noResults => 'No results';
+
+	/// en: 'Page $page'
+	String page({required Object page}) => 'Page ${page}';
+
+	/// en: 'Indexing handwriting…'
+	String get indexing => 'Indexing handwriting…';
 }
 
 // Path: sentry.consent.description

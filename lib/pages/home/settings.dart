@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
+import 'package:saber/components/handwriting/handwriting_setup.dart';
 import 'package:saber/components/navbar/responsive_navbar.dart';
 import 'package:saber/components/settings/app_info.dart';
 import 'package:saber/components/settings/nextcloud_profile.dart';
@@ -24,6 +25,7 @@ import 'package:saber/components/theming/saber_theme.dart';
 import 'package:saber/components/theming/uni_icon.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/handwriting/handwriting_recognizer.dart';
 import 'package:saber/data/is_this_a_test.dart';
 import 'package:saber/data/locales.dart';
 import 'package:saber/data/prefs.dart';
@@ -372,6 +374,20 @@ class _SettingsPageState extends State<SettingsPage> {
                   icon: FontAwesomeIcons.eraser,
                   pref: stows.disableEraserAfterUse,
                 ),
+                if (HandwritingRecognizer.instance.isSupported)
+                  SettingsSwitch(
+                    title: t.settings.prefLabels.handwritingRecognition,
+                    subtitle:
+                        t.settings.prefDescriptions.handwritingRecognition,
+                    icon: Icons.manage_search,
+                    pref: stows.handwritingRecognition,
+                    afterChange: (enabled) async {
+                      if (!enabled) return;
+                      // ask before downloading the model
+                      final ready = await HandwritingSetup.ensureModel(context);
+                      if (!ready) stows.handwritingRecognition.value = false;
+                    },
+                  ),
                 SettingsSelection(
                   title: t.settings.prefLabels.stylusButtonAction,
                   subtitle:
@@ -588,6 +604,18 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: t.settings.prefDescriptions.autoStraightenLines,
                   icon: Icons.straighten,
                   pref: stows.autoStraightenLines,
+                ),
+                SettingsSwitch(
+                  title: t.settings.prefLabels.snapLinesToAxes,
+                  subtitle: t.settings.prefDescriptions.snapLinesToAxes,
+                  icon: Icons.border_horizontal,
+                  pref: stows.snapLinesToAxes,
+                ),
+                SettingsSwitch(
+                  title: t.settings.prefLabels.tidyTables,
+                  subtitle: t.settings.prefDescriptions.tidyTables,
+                  icon: Icons.table_chart_outlined,
+                  pref: stows.tidyTables,
                 ),
                 SettingsSubtitle(subtitle: t.settings.prefCategories.advanced),
                 if (isSentryAvailable) const SettingsSentryConsent(),
