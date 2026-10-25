@@ -145,6 +145,7 @@ class EditorHistoryItem {
     required this.strokes,
     required this.images,
     this.newStrokes,
+    this.imageRectChanges,
     this.offset,
     this.page,
     this.quillChange,
@@ -191,6 +192,10 @@ class EditorHistoryItem {
   /// For [EditorHistoryItemType.replaceStrokes], the strokes that
   /// replaced [strokes].
   final List<Stroke>? newStrokes;
+
+  /// For [EditorHistoryItemType.replaceStrokes], any changes to the
+  /// position and size of images, e.g. when a selection is resized.
+  final Map<EditorImage, Change<Rect>>? imageRectChanges;
   final Rect? offset;
   final EditorPage? page;
   final DocChange? quillChange;
@@ -203,6 +208,7 @@ class EditorHistoryItem {
     List<Stroke>? strokes,
     List<EditorImage>? images,
     List<Stroke>? newStrokes,
+    Map<EditorImage, Change<Rect>>? imageRectChanges,
     Rect? offset,
     EditorPage? page,
     DocChange? quillChange,
@@ -215,6 +221,7 @@ class EditorHistoryItem {
       strokes: strokes ?? this.strokes,
       images: images ?? this.images,
       newStrokes: newStrokes ?? this.newStrokes,
+      imageRectChanges: imageRectChanges ?? this.imageRectChanges,
       offset: offset ?? this.offset,
       page: page ?? this.page,
       quillChange: quillChange ?? this.quillChange,
@@ -238,6 +245,9 @@ enum EditorHistoryItemType {
 
   /// [EditorHistoryItem.strokes] were replaced by
   /// [EditorHistoryItem.newStrokes],
-  /// e.g. when a stroke is split by the partial eraser.
+  /// e.g. when a stroke is split by the partial eraser
+  /// or a selection is resized or rotated.
+  /// Images may also have been resized, see
+  /// [EditorHistoryItem.imageRectChanges].
   replaceStrokes,
 }

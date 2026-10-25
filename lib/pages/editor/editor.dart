@@ -45,6 +45,7 @@ import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/select.dart';
+import 'package:saber/data/tools/selection_transform.dart';
 import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/home/whiteboard.dart';
@@ -451,6 +452,9 @@ class EditorState extends State<Editor> {
             createPage(stroke.pageIndex);
             coreInfo.pages[stroke.pageIndex].insertStroke(stroke);
           }
+          item.imageRectChanges?.forEach((image, change) {
+            image.dstRect = change.previous;
+          });
           removeExcessPages();
       }
 
@@ -505,7 +509,15 @@ class EditorState extends State<Editor> {
           ),
         );
       case .replaceStrokes:
-        undo(item.copyWith(strokes: item.newStrokes, newStrokes: item.strokes));
+        undo(
+          item.copyWith(
+            strokes: item.newStrokes,
+            newStrokes: item.strokes,
+            imageRectChanges: item.imageRectChanges?.map(
+              (image, change) => MapEntry(image, change.reverse()),
+            ),
+          ),
+        );
     }
   }
 
@@ -528,6 +540,10 @@ class EditorState extends State<Editor> {
   /// The total offset of the current move gesture.
   /// Used to record a move in the history.
   Offset moveOffset = .zero;
+
+  /// Used while a selection handle is dragged to resize or rotate
+  /// the selection.
+  SelectionTransformer? _selectionTransformer;
 
   var isHovering = true;
   int? dragPageIndex;
@@ -592,7 +608,24 @@ class EditorState extends State<Editor> {
       _erase(currentTool as Eraser, position, page);
     } else if (currentTool is Select) {
       final select = currentTool as Select;
-      if (select.doneSelecting &&
+      final handle =
+          select.doneSelecting &&
+              select.selectResult.pageIndex == dragPageIndex!
+          ? SelectionHandle.hitTest(
+              position,
+              select.selectResult,
+              _transformationController.value.approxScale,
+            )
+          : null;
+      if (handle != null) {
+        // resize or rotate selection in onDrawUpdate
+        _selectionTransformer = SelectionTransformer(
+          handle: handle,
+          select: select,
+          page: page,
+          startPosition: position,
+        );
+      } else if (select.doneSelecting &&
           select.selectResult.pageIndex == dragPageIndex! &&
           select.selectResult.path.contains(position)) {
         // drag selection in onDrawUpdate
@@ -628,7 +661,9 @@ class EditorState extends State<Editor> {
       page.redrawStrokes();
     } else if (currentTool is Select) {
       final select = currentTool as Select;
-      if (select.doneSelecting) {
+      if (_selectionTransformer != null) {
+        _selectionTransformer!.update(position);
+      } else if (select.doneSelecting) {
         for (final stroke in select.selectResult.strokes) {
           stroke.shift(offset);
         }
@@ -705,6 +740,23 @@ class EditorState extends State<Editor> {
           );
         }
       } else if (currentTool is Select) {
+        final transformer = _selectionTransformer;
+        _selectionTransformer = null;
+        if (transformer != null) {
+          if (!transformer.hasChanged) return;
+          history.recordChange(
+            EditorHistoryItem(
+              type: .replaceStrokes,
+              pageIndex: dragPageIndex!,
+              strokes: transformer.originalStrokes,
+              newStrokes: transformer.newStrokes,
+              imageRectChanges: transformer.imageRectChanges,
+              images: [],
+            ),
+          );
+          return;
+        }
+
         if (moveOffset == .zero) return;
         final select = currentTool as Select;
         if (select.doneSelecting) {

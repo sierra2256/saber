@@ -401,6 +401,32 @@ class Stroke {
     }
   }
 
+  /// Returns a copy of this stroke that is scaled by [scale]
+  /// and rotated by [rotation] radians around [pivot].
+  ///
+  /// The stroke width is scaled too.
+  Stroke transformed({
+    required Offset pivot,
+    double scale = 1,
+    double rotation = 0,
+  }) {
+    final c = cos(rotation), s = sin(rotation);
+    return copy()
+      ..options.size *= scale
+      ..points.clear()
+      ..points.addAll([
+        for (final point in points)
+          PointVector(
+            pivot.dx +
+                ((point.dx - pivot.dx) * c - (point.dy - pivot.dy) * s) * scale,
+            pivot.dy +
+                ((point.dx - pivot.dx) * s + (point.dy - pivot.dy) * c) * scale,
+            point.pressure,
+          ),
+      ])
+      ..markPolygonNeedsUpdating();
+  }
+
   /// Splits this stroke around a circle at [center] with radius [radius]
   /// (e.g. a partial eraser), returning the pieces of this stroke
   /// that are outside of the circle.

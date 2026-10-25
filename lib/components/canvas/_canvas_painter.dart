@@ -13,6 +13,7 @@ import 'package:saber/data/extensions/color_extensions.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:saber/data/tools/select.dart';
+import 'package:saber/data/tools/selection_transform.dart';
 import 'package:saber/data/tools/shape_pen.dart';
 
 class CanvasPainter extends CustomPainter {
@@ -248,6 +249,39 @@ class CanvasPainter extends CustomPainter {
         ..strokeWidth = 3
         ..style = .stroke,
     );
+
+    _drawSelectionHandles(canvas, currentSelection!);
+  }
+
+  /// Draws a bounding box with handles to resize and rotate the selection.
+  void _drawSelectionHandles(Canvas canvas, SelectResult selection) {
+    final bounds = SelectionHandle.boundsOf(selection);
+    if (bounds == null) return;
+
+    final scale = currentScale > 0 ? currentScale : 1.0;
+    final linePaint = Paint()
+      ..color = primaryColor
+      ..strokeWidth = 1 / scale
+      ..style = .stroke;
+    final fillPaint = Paint()..color = Colors.white;
+
+    canvas.drawRect(bounds, linePaint);
+
+    final radius = SelectionHandle.radius / scale;
+    for (final handle in SelectionHandle.values) {
+      if (handle == .rotate) {
+        if (!SelectionHandle.canRotate(selection)) continue;
+        canvas.drawLine(
+          bounds.topCenter,
+          handle.positionIn(bounds, scale),
+          linePaint,
+        );
+      }
+      final position = handle.positionIn(bounds, scale);
+      canvas.drawCircle(position, radius, fillPaint);
+      canvas.drawCircle(position, radius, linePaint..strokeWidth = 2 / scale);
+      linePaint.strokeWidth = 1 / scale;
+    }
   }
 
   static const double _pageIndicatorFontSize = 20;

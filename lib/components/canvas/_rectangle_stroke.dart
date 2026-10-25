@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:fixnum/fixnum.dart';
 import 'package:flutter/material.dart';
 import 'package:one_dollar_unistroke_recognizer/one_dollar_unistroke_recognizer.dart';
@@ -151,6 +153,60 @@ class RectangleStroke extends Stroke {
   @override
   @Deprecated('We already know the shape is a rectangle.')
   bool isStraightLine([int minLength = 0]) => false;
+
+  /// Returns a scaled and rotated copy of this rectangle.
+  ///
+  /// A rotated rectangle can't be represented by a [RectangleStroke],
+  /// so it is converted to a normal [Stroke] along its four sides.
+  @override
+  Stroke transformed({
+    required Offset pivot,
+    double scale = 1,
+    double rotation = 0,
+  }) {
+    Offset transform(Offset point) {
+      final d = (point - pivot) * scale;
+      final c = cos(rotation), s = sin(rotation);
+      return pivot + Offset(d.dx * c - d.dy * s, d.dx * s + d.dy * c);
+    }
+
+    if (rotation == 0) {
+      return copy()
+        ..options.size *= scale
+        ..rect = .fromPoints(
+          transform(rect.topLeft),
+          transform(rect.bottomRight),
+        )
+        ..markPolygonNeedsUpdating();
+    }
+
+    final corners = [
+      rect.topLeft,
+      rect.topRight,
+      rect.bottomRight,
+      rect.bottomLeft,
+      rect.topLeft,
+    ].map(transform).toList();
+    final stroke = Stroke(
+      color: color,
+      pressureEnabled: false,
+      options: options.copyWith(size: options.size * scale),
+      pageIndex: pageIndex,
+      page: page,
+      toolId: toolId,
+    );
+    // Add points along each side so the corners stay sharp
+    for (int i = 0; i < corners.length - 1; i++) {
+      for (int j = 0; j < 8; j++) {
+        stroke.addPoint(Offset.lerp(corners[i], corners[i + 1], j / 8)!);
+      }
+    }
+    stroke
+      ..addPoint(corners.last)
+      ..addPoint(corners.last)
+      ..options.isComplete = true;
+    return stroke;
+  }
 
   @override
   RectangleStroke copy() => RectangleStroke(
