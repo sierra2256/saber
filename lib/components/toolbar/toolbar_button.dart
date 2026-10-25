@@ -43,7 +43,7 @@ class ToolbarIconButton extends StatelessWidget {
       iconColor: foregroundColor,
       foregroundColor: foregroundColor,
       iconSize: const WidgetStatePropertyAll(20),
-      padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
+      padding: const WidgetStatePropertyAll(EdgeInsets.all(7)),
       shape: const WidgetStatePropertyAll(
         RoundedRectangleBorder(borderRadius: BorderRadius.all(.circular(10))),
       ),

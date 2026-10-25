@@ -13,6 +13,7 @@ import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/components/theming/uni_icon.dart';
 import 'package:saber/components/toolbar/color_bar.dart';
 import 'package:saber/components/toolbar/export_bar.dart';
+import 'package:saber/components/toolbar/floating_panel.dart';
 import 'package:saber/components/toolbar/pen_modal.dart';
 import 'package:saber/components/toolbar/quick_options.dart';
 import 'package:saber/components/toolbar/selection_bar.dart';
@@ -51,6 +52,11 @@ class Toolbar extends StatefulWidget {
     required this.exportAsSba,
     required this.exportAsPdf,
     required this.exportAsPng,
+    this.leading,
+    required this.insertPage,
+    required this.showPages,
+    required this.showNoteSettings,
+    this.rename,
   });
 
   final bool readOnly;
@@ -81,10 +87,20 @@ class Toolbar extends StatefulWidget {
   final Future Function(BuildContext)? exportAsPdf;
   final Future Function(BuildContext)? exportAsPng;
 
+  /// Shown at the start of the toolbar, e.g. the back button and note title.
+  final Widget? leading;
+
+  final VoidCallback insertPage;
+  final VoidCallback showPages;
+  final VoidCallback showNoteSettings;
+
+  /// Shown in the overflow menu when the title doesn't fit in the toolbar.
+  final VoidCallback? rename;
+
   @override
   State<Toolbar> createState() => _ToolbarState();
 
-  static const _buttonPaddingHorizontal = EdgeInsets.symmetric(horizontal: 6);
+  static const _buttonPaddingHorizontal = EdgeInsets.symmetric(horizontal: 2);
   static const _buttonPaddingVertical = EdgeInsets.symmetric(vertical: 6);
 }
 
@@ -214,7 +230,7 @@ class _ToolbarState extends State<Toolbar> {
             child: child!,
           );
         },
-        child: _FloatingPanel(
+        child: FloatingPanel(
           child: ExportBar(
             axis: toolbarAxis,
             toggleExportBar: toggleExportBar,
@@ -233,7 +249,7 @@ class _ToolbarState extends State<Toolbar> {
                 : CollapsibleAxis.vertical,
             maintainState: true,
             collapsed: toolOptionsType == .hide,
-            child: _FloatingPanel(
+            child: FloatingPanel(
               child: switch (toolOptionsType) {
                 .hide => const SizedBox.square(
                   dimension: SizePicker.smallLength,
@@ -271,7 +287,7 @@ class _ToolbarState extends State<Toolbar> {
             child: child!,
           );
         },
-        child: _FloatingPanel(
+        child: FloatingPanel(
           child: ColorBar(
             axis: toolbarAxis,
             setColor: widget.setColor,
@@ -307,7 +323,7 @@ class _ToolbarState extends State<Toolbar> {
             maintainState: false,
             collapsed: !widget.textEditing || quill == null,
             child: quill != null
-                ? _FloatingPanel(
+                ? FloatingPanel(
                     child: QuillSimpleToolbar(
                       controller: quill.controller,
                       config: QuillSimpleToolbarConfig(
@@ -334,7 +350,7 @@ class _ToolbarState extends State<Toolbar> {
           );
         },
       ),
-      _FloatingPanel(
+      FloatingPanel(
         child: Padding(
           padding: const .symmetric(horizontal: 8, vertical: 4),
           child: Wrap(
@@ -343,6 +359,10 @@ class _ToolbarState extends State<Toolbar> {
             crossAxisAlignment: WrapCrossAlignment.center,
             runSpacing: 4,
             children: [
+              if (widget.leading != null) ...[
+                widget.leading!,
+                _ToolbarDivider(axis: toolbarAxis),
+              ],
               _ToolbarGroup(
                 axis: toolbarAxis,
                 children: [
@@ -485,18 +505,6 @@ class _ToolbarState extends State<Toolbar> {
                       cupertinoIcon: CupertinoIcons.photo,
                     ),
                   ),
-                  ToolbarIconButton(
-                    tooltip: t.editor.pens.laserPointer,
-                    selected:
-                        widget.currentTool == LaserPointer.currentLaserPointer,
-                    enabled: true, // even in read-only mode
-                    onPressed: () {
-                      toolOptionsType.value = .hide;
-                      widget.setTool(LaserPointer.currentLaserPointer);
-                    },
-                    padding: buttonPadding,
-                    child: const Icon(Symbols.stylus_laser_pointer),
-                  ),
                 ],
               ),
               if (currentColor != null && !widget.readOnly) ...[
@@ -537,52 +545,16 @@ class _ToolbarState extends State<Toolbar> {
               _ToolbarGroup(
                 axis: toolbarAxis,
                 children: [
-                  if (!stows.hideFingerDrawingToggle.value)
-                    ValueListenableBuilder(
-                      valueListenable: stows.editorFingerDrawing,
-                      builder: (context, value, child) {
-                        return ToolbarIconButton(
-                          tooltip: t.editor.toolbar.toggleFingerDrawing,
-                          selected: value,
-                          enabled: !widget.readOnly,
-                          onPressed: widget.toggleFingerDrawing,
-                          padding: buttonPadding,
-                          child: const Icon(CupertinoIcons.hand_draw),
-                        );
-                      },
-                    ),
                   ToolbarIconButton(
-                    tooltip: t.editor.toolbar.fullscreen,
-                    selected: DynamicMaterialApp.isFullscreen,
-                    enabled: !widget.readOnly,
-                    onPressed: toggleFullscreen,
+                    tooltip: t.editor.pages,
+                    onPressed: widget.showPages,
                     padding: buttonPadding,
-                    child: AdaptiveIcon(
-                      icon: DynamicMaterialApp.isFullscreen
-                          ? Icons.fullscreen_exit
-                          : Icons.fullscreen,
-                      cupertinoIcon: DynamicMaterialApp.isFullscreen
-                          ? CupertinoIcons.fullscreen_exit
-                          : CupertinoIcons.fullscreen,
-                    ),
-                  ),
-                  ValueListenableBuilder(
-                    valueListenable: showExportOptions,
-                    builder: (context, showExportOptions, child) {
-                      return ToolbarIconButton(
-                        tooltip: t.editor.toolbar.export,
-                        selected: showExportOptions,
-                        enabled: !widget.readOnly,
-                        onPressed: toggleExportBar,
-                        padding: buttonPadding,
-                        child: child!,
-                      );
-                    },
                     child: const AdaptiveIcon(
-                      icon: Icons.share,
-                      cupertinoIcon: CupertinoIcons.share,
+                      icon: Icons.grid_view,
+                      cupertinoIcon: CupertinoIcons.rectangle_grid_2x2,
                     ),
                   ),
+                  _buildMoreMenu(buttonPadding),
                 ],
               ),
             ],
@@ -608,6 +580,87 @@ class _ToolbarState extends State<Toolbar> {
     );
   }
 
+  /// Less frequently used actions, kept out of the toolbar to save space.
+  Widget _buildMoreMenu(EdgeInsets buttonPadding) {
+    return ValueListenableBuilder(
+      valueListenable: stows.editorFingerDrawing,
+      builder: (context, fingerDrawing, _) => MenuAnchor(
+        menuChildren: [
+          if (widget.rename != null)
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.edit),
+              onPressed: widget.readOnly ? null : widget.rename,
+              child: Text(t.home.renameNote.renameNote),
+            ),
+          MenuItemButton(
+            leadingIcon: const AdaptiveIcon(
+              icon: Icons.insert_page_break,
+              cupertinoIcon: CupertinoIcons.add,
+            ),
+            onPressed: widget.readOnly ? null : widget.insertPage,
+            child: Text(t.editor.menu.insertPage),
+          ),
+          MenuItemButton(
+            leadingIcon: const Icon(Symbols.stylus_laser_pointer),
+            trailingIcon: widget.currentTool == LaserPointer.currentLaserPointer
+                ? const Icon(Icons.check)
+                : null,
+            // even in read-only mode
+            onPressed: () {
+              toolOptionsType.value = .hide;
+              widget.setTool(LaserPointer.currentLaserPointer);
+            },
+            child: Text(t.editor.pens.laserPointer),
+          ),
+          if (!stows.hideFingerDrawingToggle.value)
+            MenuItemButton(
+              leadingIcon: const Icon(CupertinoIcons.hand_draw),
+              trailingIcon: fingerDrawing ? const Icon(Icons.check) : null,
+              onPressed: widget.readOnly ? null : widget.toggleFingerDrawing,
+              child: Text(t.editor.toolbar.toggleFingerDrawing),
+            ),
+          MenuItemButton(
+            leadingIcon: AdaptiveIcon(
+              icon: DynamicMaterialApp.isFullscreen
+                  ? Icons.fullscreen_exit
+                  : Icons.fullscreen,
+              cupertinoIcon: DynamicMaterialApp.isFullscreen
+                  ? CupertinoIcons.fullscreen_exit
+                  : CupertinoIcons.fullscreen,
+            ),
+            onPressed: widget.readOnly ? null : toggleFullscreen,
+            child: Text(t.editor.toolbar.fullscreen),
+          ),
+          MenuItemButton(
+            leadingIcon: const AdaptiveIcon(
+              icon: Icons.share,
+              cupertinoIcon: CupertinoIcons.share,
+            ),
+            onPressed: widget.readOnly ? null : toggleExportBar,
+            child: Text(t.editor.toolbar.export),
+          ),
+          const Divider(height: 1),
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.tune),
+            onPressed: widget.showNoteSettings,
+            child: Text(t.home.tabs.settings),
+          ),
+        ],
+        builder: (context, controller, _) => ToolbarIconButton(
+          tooltip: MaterialLocalizations.of(context).showMenuTooltip,
+          selected: controller.isOpen,
+          onPressed: () =>
+              controller.isOpen ? controller.close() : controller.open(),
+          padding: buttonPadding,
+          child: const AdaptiveIcon(
+            icon: Icons.more_vert,
+            cupertinoIcon: CupertinoIcons.ellipsis_vertical,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     DynamicMaterialApp.removeFullscreenListener(_setState);
@@ -615,34 +668,6 @@ class _ToolbarState extends State<Toolbar> {
 
     _removeKeybindings();
     super.dispose();
-  }
-}
-
-/// A rounded panel that floats over the page, so the page stays visible
-/// around the toolbar (like GoodNotes).
-class _FloatingPanel extends StatelessWidget {
-  const new({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = ColorScheme.of(context);
-    return Center(
-      child: Padding(
-        padding: const .all(6),
-        child: Material(
-          color: colorScheme.surfaceContainerLow,
-          elevation: 3,
-          shape: RoundedRectangleBorder(
-            borderRadius: const .all(.circular(16)),
-            side: BorderSide(color: colorScheme.outlineVariant),
-          ),
-          clipBehavior: .antiAlias,
-          child: child,
-        ),
-      ),
-    );
   }
 }
 
@@ -674,7 +699,9 @@ class _ToolbarDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = ColorScheme.of(context).outlineVariant;
     return Padding(
-      padding: const .all(6),
+      padding: axis == Axis.horizontal
+          ? const .symmetric(horizontal: 4)
+          : const .symmetric(vertical: 4),
       child: axis == Axis.horizontal
           ? SizedBox(
               height: 24,
