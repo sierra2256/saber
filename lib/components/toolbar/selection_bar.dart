@@ -8,6 +8,7 @@ class SelectionBar extends StatelessWidget {
   final VoidCallback deleteSelection;
   final VoidCallback? saveSelectionAsElement;
   final VoidCallback? convertSelectionToText;
+  final VoidCallback? copySelectionToOtherSide;
 
   const new({
     super.key,
@@ -15,6 +16,7 @@ class SelectionBar extends StatelessWidget {
     required this.deleteSelection,
     this.saveSelectionAsElement,
     this.convertSelectionToText,
+    this.copySelectionToOtherSide,
   });
 
   @override
@@ -59,6 +61,17 @@ class SelectionBar extends StatelessWidget {
           tooltip: t.editor.selectionBar.saveAsElement,
           icon: const Icon(Icons.bookmark_add_outlined),
         ),
+        if (copySelectionToOtherSide != null)
+          IconButton(
+            onPressed: copySelectionToOtherSide,
+            style: TextButton.styleFrom(
+              foregroundColor: ColorScheme.of(context).secondary,
+              backgroundColor: Colors.transparent,
+              shape: const CircleBorder(),
+            ),
+            tooltip: t.editor.splitView.copyToOtherSide,
+            icon: const Icon(Icons.move_up),
+          ),
         if (convertSelectionToText != null)
           IconButton(
             onPressed: convertSelectionToText,

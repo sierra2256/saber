@@ -76,7 +76,14 @@ class EditorCoreInfo {
   /// Stores the current page index so that it can be restored when the file is reloaded.
   int? initialPageIndex;
 
-  static final placeholder =
+  static final placeholder = EditorCoreInfo.newPlaceholder();
+
+  /// Creates a placeholder note to show until the real note is loaded.
+  ///
+  /// Each editor needs its own placeholder (rather than [placeholder]),
+  /// since there can be two editors at once in split view
+  /// and a page can only be shown in one place.
+  factory newPlaceholder() =>
       EditorCoreInfo._(
         filePath: '',
         readOnlyReason: .placeholder,

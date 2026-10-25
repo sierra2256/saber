@@ -4,12 +4,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:saber/components/canvas/_canvas_background_painter.dart';
 import 'package:saber/components/canvas/_canvas_painter.dart';
+import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/inner_canvas.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/editor/zoom_box.dart';
 import 'package:saber/data/prefs.dart';
-import 'package:saber/data/tools/pen.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:sbn/canvas_background_pattern.dart';
 
@@ -21,6 +21,7 @@ class ZoomWritingBox extends StatefulWidget {
     super.key,
     required this.zoomBox,
     required this.coreInfo,
+    required this.getCurrentStroke,
     required this.onDrawStart,
     required this.onDrawUpdate,
     required this.onDrawEnd,
@@ -31,6 +32,9 @@ class ZoomWritingBox extends StatefulWidget {
 
   final ZoomBox zoomBox;
   final EditorCoreInfo coreInfo;
+
+  /// The stroke being drawn by this editor, if any.
+  final Stroke? Function() getCurrentStroke;
 
   /// Called with positions in page coordinates.
   final ValueChanged<Offset> onDrawStart;
@@ -150,6 +154,7 @@ class _ZoomWritingBoxState extends State<ZoomWritingBox> {
                           zoomBox: zoomBox,
                           page: page,
                           coreInfo: widget.coreInfo,
+                          getCurrentStroke: widget.getCurrentStroke,
                           invert:
                               stows.editorAutoInvert.value &&
                               Theme.brightnessOf(context) == .dark,
@@ -209,6 +214,7 @@ class _ZoomBoxPainter extends CustomPainter {
     required this.zoomBox,
     required this.page,
     required this.coreInfo,
+    required this.getCurrentStroke,
     required this.invert,
     required this.primaryColor,
     required this.secondaryColor,
@@ -218,6 +224,7 @@ class _ZoomBoxPainter extends CustomPainter {
   final ZoomBox zoomBox;
   final EditorPage page;
   final EditorCoreInfo coreInfo;
+  final Stroke? Function() getCurrentStroke;
   final bool invert;
   final Color primaryColor;
   final Color secondaryColor;
@@ -245,7 +252,7 @@ class _ZoomBoxPainter extends CustomPainter {
       secondaryColor: secondaryColor,
     ).paint(canvas, page.size);
 
-    final currentStroke = Pen.currentStroke;
+    final currentStroke = getCurrentStroke();
     CanvasPainter(
       invert: invert,
       strokes: page.strokes,

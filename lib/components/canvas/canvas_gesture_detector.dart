@@ -11,9 +11,11 @@ import 'package:keybinder/keybinder.dart';
 import 'package:saber/components/canvas/hud/canvas_hud.dart';
 import 'package:saber/components/canvas/interactive_canvas.dart';
 import 'package:saber/components/canvas/multi_finger_tap_detector.dart';
+import 'package:saber/components/editor/editor_pane.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
+import 'package:saber/data/keybinding_group.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
@@ -254,9 +256,24 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     widget._transformationController.notifyListenersPlease();
   }
 
+  final _keybindings = KeybindingGroup();
   var _setupKeybindings = false;
   late Keybinding _ctrlPlus, _ctrlEquals, _ctrlMinus;
   late Keybinding _leftKey, _rightKey, _upKey, _downKey;
+
+  /// Whether this canvas's editor is active, see [EditorPane].
+  bool get _isActive => mounted && EditorPane.isActiveAt(context);
+
+  VoidCallback ifActive(VoidCallback callback) => () {
+    if (_isActive) callback();
+  };
+
+  void _ifActiveArrowKeyPan(AxisDirection direction, bool pressed) {
+    // always handle releases, so panning stops
+    if (pressed && !_isActive) return;
+    arrowKeyPan(direction, pressed);
+  }
+
   void _assignKeybindings() {
     _ctrlPlus = Keybinding([
       KeyCode.ctrl,
@@ -270,9 +287,9 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
       KeyCode.ctrl,
       KeyCode.from(LogicalKeyboardKey.minus),
     ], inclusive: true);
-    Keybinder.bind(_ctrlPlus, zoomIn);
-    Keybinder.bind(_ctrlEquals, zoomIn);
-    Keybinder.bind(_ctrlMinus, zoomOut);
+    _keybindings.bind(_ctrlPlus, ifActive(zoomIn));
+    _keybindings.bind(_ctrlEquals, ifActive(zoomIn));
+    _keybindings.bind(_ctrlMinus, ifActive(zoomOut));
 
     _leftKey = Keybinding([
       KeyCode.from(LogicalKeyboardKey.arrowLeft),
@@ -286,21 +303,21 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     _downKey = Keybinding([
       KeyCode.from(LogicalKeyboardKey.arrowDown),
     ], inclusive: true);
-    Keybinder.bind(
+    _keybindings.bind(
       _leftKey,
-      (bool pressed) => arrowKeyPan(AxisDirection.left, pressed),
+      (bool pressed) => _ifActiveArrowKeyPan(AxisDirection.left, pressed),
     );
-    Keybinder.bind(
+    _keybindings.bind(
       _rightKey,
-      (bool pressed) => arrowKeyPan(AxisDirection.right, pressed),
+      (bool pressed) => _ifActiveArrowKeyPan(AxisDirection.right, pressed),
     );
-    Keybinder.bind(
+    _keybindings.bind(
       _upKey,
-      (bool pressed) => arrowKeyPan(AxisDirection.up, pressed),
+      (bool pressed) => _ifActiveArrowKeyPan(AxisDirection.up, pressed),
     );
-    Keybinder.bind(
+    _keybindings.bind(
       _downKey,
-      (bool pressed) => arrowKeyPan(AxisDirection.down, pressed),
+      (bool pressed) => _ifActiveArrowKeyPan(AxisDirection.down, pressed),
     );
 
     _setupKeybindings = true;
@@ -310,14 +327,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     if (!_setupKeybindings) return;
     _setupKeybindings = false;
 
-    Keybinder.remove(_ctrlPlus);
-    Keybinder.remove(_ctrlEquals);
-    Keybinder.remove(_ctrlMinus);
-
-    Keybinder.remove(_leftKey);
-    Keybinder.remove(_rightKey);
-    Keybinder.remove(_upKey);
-    Keybinder.remove(_downKey);
+    _keybindings.removeAll();
     _arrowKeyPanTimers.forEach((_, timer) => timer.cancel());
   }
 

@@ -8,6 +8,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:keybinder/keybinder.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:saber/components/editor/editor_pane.dart';
 import 'package:saber/components/theming/adaptive_icon.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/components/theming/uni_icon.dart';
@@ -23,6 +24,7 @@ import 'package:saber/components/toolbar/size_picker.dart';
 import 'package:saber/components/toolbar/toolbar_button.dart';
 import 'package:saber/data/editor/canvas_element.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/keybinding_group.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/eraser.dart';
@@ -66,6 +68,10 @@ class Toolbar extends StatefulWidget {
     this.showingPages = false,
     this.toggleZoomBox,
     this.zoomBoxOpen = false,
+    this.hasSelection = false,
+    this.copySelectionToOtherSide,
+    this.openSplitView,
+    this.closeSplitView,
     required this.showNoteSettings,
     this.rename,
   });
@@ -121,6 +127,18 @@ class Toolbar extends StatefulWidget {
   /// Opens or closes the zoom writing box.
   final VoidCallback? toggleZoomBox;
   final bool zoomBoxOpen;
+
+  /// Whether this editor has a finished lasso selection.
+  final bool hasSelection;
+
+  /// In split view, copies the selected strokes to the other note.
+  final VoidCallback? copySelectionToOtherSide;
+
+  /// Shows another note next to this one, or null if already in split view.
+  final VoidCallback? openSplitView;
+
+  /// Closes the split view, keeping this note, or null if not in split view.
+  final VoidCallback? closeSplitView;
   final VoidCallback showNoteSettings;
 
   /// Shown in the overflow menu when the title doesn't fit in the toolbar.
@@ -150,6 +168,7 @@ class _ToolbarState extends State<Toolbar> {
 
   void _setState() => setState(() {});
 
+  final _keybindings = KeybindingGroup();
   Keybinding? _ctrlF;
   Keybinding? _ctrlE;
   Keybinding? _ctrlC;
@@ -180,21 +199,20 @@ class _ToolbarState extends State<Toolbar> {
       KeyCode.from(LogicalKeyboardKey.keyV),
     ], inclusive: true);
 
-    Keybinder.bind(_ctrlF!, widget.toggleFingerDrawing);
-    Keybinder.bind(_ctrlE!, toggleEraser);
-    Keybinder.bind(_ctrlC!, toggleColorOptions);
-    Keybinder.bind(_ctrlShiftS!, toggleExportBar);
-    Keybinder.bind(_f11!, toggleFullscreen);
-    Keybinder.bind(_ctrlV!, widget.paste);
+    // in split view, only the active editor reacts to shortcuts
+    VoidCallback ifActive(VoidCallback callback) => () {
+      if (mounted && EditorPane.isActiveAt(context)) callback();
+    };
+    _keybindings.bind(_ctrlF!, ifActive(() => widget.toggleFingerDrawing()));
+    _keybindings.bind(_ctrlE!, ifActive(toggleEraser));
+    _keybindings.bind(_ctrlC!, ifActive(toggleColorOptions));
+    _keybindings.bind(_ctrlShiftS!, ifActive(toggleExportBar));
+    _keybindings.bind(_f11!, ifActive(toggleFullscreen));
+    _keybindings.bind(_ctrlV!, ifActive(() => widget.paste()));
   }
 
   void _removeKeybindings() {
-    if (_ctrlF != null) Keybinder.remove(_ctrlF!);
-    if (_ctrlE != null) Keybinder.remove(_ctrlE!);
-    if (_ctrlC != null) Keybinder.remove(_ctrlC!);
-    if (_ctrlShiftS != null) Keybinder.remove(_ctrlShiftS!);
-    if (_f11 != null) Keybinder.remove(_f11!);
-    if (_ctrlV != null) Keybinder.remove(_ctrlV!);
+    _keybindings.removeAll();
   }
 
   void toggleEraser() {
@@ -236,15 +254,14 @@ class _ToolbarState extends State<Toolbar> {
 
     final currentColor = switch (widget.currentTool) {
       final Pen pen => pen.color,
-      final Select select => select.getDominantStrokeColor(),
+      final Select select when widget.hasSelection =>
+        select.getDominantStrokeColor(),
       _ => null,
     };
 
     if (widget.currentTool == Select.currentSelect) {
       // Enable selection bar only when selection is done
-      toolOptionsType.value = Select.currentSelect.doneSelecting
-          ? .select
-          : .hide;
+      toolOptionsType.value = widget.hasSelection ? .select : .hide;
     }
 
     final bars = <Widget>[
@@ -301,6 +318,7 @@ class _ToolbarState extends State<Toolbar> {
                   deleteSelection: widget.deleteSelection,
                   saveSelectionAsElement: widget.saveSelectionAsElement,
                   convertSelectionToText: widget.convertSelectionToText,
+                  copySelectionToOtherSide: widget.copySelectionToOtherSide,
                 ),
               },
             ),
@@ -709,6 +727,18 @@ class _ToolbarState extends State<Toolbar> {
             onPressed: widget.readOnly ? null : widget.insertPage,
             child: Text(t.editor.menu.insertPage),
           ),
+          if (widget.openSplitView != null)
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.vertical_split_outlined),
+              onPressed: widget.openSplitView,
+              child: Text(t.editor.splitView.open),
+            ),
+          if (widget.closeSplitView != null)
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.fullscreen),
+              onPressed: widget.closeSplitView,
+              child: Text(t.editor.splitView.close),
+            ),
           if (widget.toggleZoomBox != null)
             MenuItemButton(
               leadingIcon: const Icon(Icons.zoom_in),

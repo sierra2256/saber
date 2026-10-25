@@ -354,6 +354,15 @@ editor:
     edit: Edit elements
     saved: Saved to elements
   pasteAgain: Paste again
+  splitView:
+    open: Split view
+    close: Close split view
+    chooseNote: Open next to this note
+    search: Search notes
+    newNote: New note
+    importPdf: Import PDF
+    copyToOtherSide: Copy to the other side
+    copied: Copied to the other side
   zoomBox:
     title: Zoom writing box
     lineUp: Previous line

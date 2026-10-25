@@ -26,12 +26,27 @@ class Select extends Tool {
   );
   var doneSelecting = false;
 
+  /// The editor that the selection belongs to,
+  /// since there's one [Select] tool but there can be two editors
+  /// (in split view). Null means any editor.
+  Object? owner;
+
   @override
   ToolId get toolId => .select;
+
+  /// Whether there's a finished selection that belongs to [editor].
+  bool isDoneSelectingFor(Object editor) =>
+      doneSelecting && (owner == null || identical(owner, editor));
 
   void unselect() {
     doneSelecting = false;
     selectResult.pageIndex = -1;
+    owner = null;
+  }
+
+  /// Unselects, if the selection belongs to [editor].
+  void unselectFor(Object editor) {
+    if (owner == null || identical(owner, editor)) unselect();
   }
 
   Color? getDominantStrokeColor() {
