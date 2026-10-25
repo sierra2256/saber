@@ -442,6 +442,16 @@ class EditorState extends State<Editor> {
 
         case .backgroundPattern:
           coreInfo.backgroundPattern = item.backgroundPatternChange!.previous;
+
+        case .replaceStrokes:
+          for (final stroke in item.newStrokes!) {
+            coreInfo.pages[stroke.pageIndex].strokes.remove(stroke);
+          }
+          for (final stroke in item.strokes) {
+            createPage(stroke.pageIndex);
+            coreInfo.pages[stroke.pageIndex].insertStroke(stroke);
+          }
+          removeExcessPages();
       }
 
       if (item.type != .move) {
@@ -494,6 +504,8 @@ class EditorState extends State<Editor> {
             backgroundPatternChange: item.backgroundPatternChange!.reverse(),
           ),
         );
+      case .replaceStrokes:
+        undo(item.copyWith(strokes: item.newStrokes, newStrokes: item.strokes));
     }
   }
 
@@ -577,13 +589,7 @@ class EditorState extends State<Editor> {
         currentPressure,
       );
     } else if (currentTool is Eraser) {
-      for (final stroke in (currentTool as Eraser).checkForOverlappingStrokes(
-        position,
-        page.strokes,
-      )) {
-        page.strokes.remove(stroke);
-      }
-      removeExcessPages();
+      _erase(currentTool as Eraser, position, page);
     } else if (currentTool is Select) {
       final select = currentTool as Select;
       if (select.doneSelecting &&
@@ -618,14 +624,8 @@ class EditorState extends State<Editor> {
       (currentTool as Pen).onDragUpdate(position, currentPressure);
       page.redrawStrokes();
     } else if (currentTool is Eraser) {
-      for (final stroke in (currentTool as Eraser).checkForOverlappingStrokes(
-        position,
-        page.strokes,
-      )) {
-        page.strokes.remove(stroke);
-      }
+      _erase(currentTool as Eraser, position, page);
       page.redrawStrokes();
-      removeExcessPages();
     } else if (currentTool is Select) {
       final select = currentTool as Select;
       if (select.doneSelecting) {
@@ -674,21 +674,36 @@ class EditorState extends State<Editor> {
           ),
         );
       } else if (currentTool is Eraser) {
-        final erased = (currentTool as Eraser).onDragEnd();
+        final eraser = currentTool as Eraser;
         if (_toolBeforeStylusButton == null &&
             stows.disableEraserAfterUse.value) {
           // restore previous tool
           currentTool = _lastNonEraserTool;
         }
-        if (erased.isEmpty) return;
-        history.recordChange(
-          EditorHistoryItem(
-            type: .erase,
-            pageIndex: dragPageIndex!,
-            strokes: erased,
-            images: [],
-          ),
-        );
+        if (eraser.partial) {
+          final (:erased, :created) = eraser.onPartialDragEnd();
+          if (erased.isEmpty) return;
+          history.recordChange(
+            EditorHistoryItem(
+              type: .replaceStrokes,
+              pageIndex: dragPageIndex!,
+              strokes: erased,
+              newStrokes: created,
+              images: [],
+            ),
+          );
+        } else {
+          final erased = eraser.onDragEnd();
+          if (erased.isEmpty) return;
+          history.recordChange(
+            EditorHistoryItem(
+              type: .erase,
+              pageIndex: dragPageIndex!,
+              strokes: erased,
+              images: [],
+            ),
+          );
+        }
       } else if (currentTool is Select) {
         if (moveOffset == .zero) return;
         final select = currentTool as Select;
@@ -732,6 +747,20 @@ class EditorState extends State<Editor> {
     _isDrawing = false;
     // apply any stylus button changes that happened during the stroke
     _applyStylusButtonState();
+  }
+
+  void _erase(Eraser eraser, Offset position, EditorPage page) {
+    if (eraser.partial) {
+      eraser.erasePartially(position, page.strokes);
+    } else {
+      for (final stroke in eraser.checkForOverlappingStrokes(
+        position,
+        page.strokes,
+      )) {
+        page.strokes.remove(stroke);
+      }
+    }
+    removeExcessPages();
   }
 
   void onInteractionEnd(ScaleEndDetails details) {

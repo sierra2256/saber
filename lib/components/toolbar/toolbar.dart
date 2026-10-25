@@ -541,6 +541,13 @@ class _ToolbarState extends State<Toolbar> {
                   ],
                 ),
               ],
+              if (widget.currentTool is Eraser && !widget.readOnly) ...[
+                _ToolbarDivider(axis: toolbarAxis),
+                QuickEraserOptions(
+                  axis: toolbarAxis,
+                  onChanged: () => setState(() {}),
+                ),
+              ],
               _ToolbarDivider(axis: toolbarAxis),
               _ToolbarGroup(
                 axis: toolbarAxis,

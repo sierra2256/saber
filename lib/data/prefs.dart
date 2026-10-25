@@ -196,6 +196,28 @@ class Stows {
     volatile: !_isOnMainIsolate,
   );
 
+  /// The eraser radius, see [Eraser.sizePresets].
+  final eraserSize = PlainStow<double>(
+    'eraserSize',
+    10,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Whether the eraser only erases the touched part of a stroke,
+  /// instead of the whole stroke.
+  final eraserPartial = PlainStow(
+    'eraserPartial',
+    false,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Whether the eraser only erases highlighter strokes.
+  final eraserHighlighterOnly = PlainStow(
+    'eraserHighlighterOnly',
+    false,
+    volatile: !_isOnMainIsolate,
+  );
+
   /// What holding the stylus side button (e.g. the S Pen button) does.
   final stylusButtonAction = PlainStow(
     'stylusButtonAction',

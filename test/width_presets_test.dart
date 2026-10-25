@@ -35,11 +35,11 @@ void main() {
     test('presets are stored per tool type', () {
       WidthPresets.set(Pen.fountainPen(), 0, 3);
       expect(WidthPresets.of(Pen.fountainPen()), [3, 5, 10]);
-      expect(
-        WidthPresets.of(Pen.ballpointPen()),
-        [3, 5, 10],
-        reason: 'Pens share presets',
-      );
+      expect(WidthPresets.of(Pen.ballpointPen()), [
+        3,
+        5,
+        10,
+      ], reason: 'Pens share presets');
       expect(WidthPresets.of(Pencil()), WidthPresets.defaults['pencil']);
       expect(
         WidthPresets.of(Highlighter()),

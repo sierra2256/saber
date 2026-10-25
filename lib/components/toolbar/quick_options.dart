@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:saber/components/toolbar/color_bar.dart';
 import 'package:saber/data/extensions/color_extensions.dart';
 import 'package:saber/data/prefs.dart';
+import 'package:saber/data/tools/eraser.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/pencil.dart';
@@ -142,6 +144,99 @@ class QuickSizes extends StatelessWidget {
               );
             },
           ),
+      ],
+    );
+  }
+}
+
+/// Inline eraser options: three eraser sizes,
+/// whole-stroke vs partial erasing, and highlighter-only erasing.
+class QuickEraserOptions extends StatelessWidget {
+  const new({super.key, required this.axis, required this.onChanged});
+
+  final Axis axis;
+  final VoidCallback onChanged;
+
+  static const _dotDiameters = [6.0, 10.0, 16.0];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = ColorScheme.of(context);
+    final currentSize = stows.eraserSize.value;
+    final partial = stows.eraserPartial.value;
+    final highlighterOnly = stows.eraserHighlighterOnly.value;
+    return Flex(
+      direction: axis,
+      mainAxisSize: .min,
+      children: [
+        for (int i = 0; i < Eraser.sizePresets.length; ++i)
+          Builder(
+            builder: (context) {
+              final size = Eraser.sizePresets[i];
+              final selected = currentSize == size;
+              return _QuickOption(
+                tooltip: '${t.editor.penOptions.size}: ${size.round()}',
+                selected: selected,
+                onTap: () {
+                  stows.eraserSize.value = size;
+                  onChanged();
+                },
+                child: SizedBox.square(
+                  dimension: 20,
+                  child: Center(
+                    child: Container(
+                      width: _dotDiameters[i],
+                      height: _dotDiameters[i],
+                      decoration: BoxDecoration(
+                        shape: .circle,
+                        border: Border.all(
+                          color: selected
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        _QuickOption(
+          tooltip: partial
+              ? t.editor.eraserOptions.partial
+              : t.editor.eraserOptions.wholeStroke,
+          selected: partial,
+          onTap: () {
+            stows.eraserPartial.value = !partial;
+            onChanged();
+          },
+          child: Icon(
+            partial ? Icons.content_cut : Icons.gesture,
+            size: 20,
+            color: partial ? colorScheme.primary : colorScheme.onSurfaceVariant,
+          ),
+        ),
+        _QuickOption(
+          tooltip: t.editor.eraserOptions.highlighterOnly,
+          selected: highlighterOnly,
+          onTap: () {
+            stows.eraserHighlighterOnly.value = !highlighterOnly;
+            onChanged();
+          },
+          child: SizedBox.square(
+            dimension: 20,
+            child: Center(
+              child: FaIcon(
+                Highlighter.highlighterIcon,
+                size: 14,
+                color: highlighterOnly
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
