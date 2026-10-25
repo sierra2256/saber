@@ -16,6 +16,7 @@ class SelectionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      mainAxisSize: .min,
       mainAxisAlignment: .center,
       children: [
         IconButton(

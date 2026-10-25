@@ -1586,37 +1586,46 @@ class EditorState extends State<Editor> {
       ),
     );
 
-    final Widget body;
-    if (isToolbarVertical) {
-      body = Row(
-        textDirection: stows.editorToolbarAlignment.value == AxisDirection.left
-            ? .ltr
-            : .rtl,
-        children: [
-          toolbar,
-          Expanded(
-            child: Column(
-              children: [
-                Expanded(child: canvas),
-                readonlyBanner,
-              ],
-            ),
+    // The toolbar floats over the canvas so the page stays visible
+    // around (and scrolls underneath) the toolbar, like GoodNotes.
+    final Widget body = Column(
+      children: [
+        Expanded(
+          child: Stack(
+            children: [
+              Positioned.fill(child: canvas),
+              switch (stows.editorToolbarAlignment.value) {
+                AxisDirection.up => Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: toolbar,
+                ),
+                AxisDirection.down => Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: toolbar,
+                ),
+                AxisDirection.left => Positioned(
+                  top: 0,
+                  bottom: 0,
+                  left: 0,
+                  child: toolbar,
+                ),
+                AxisDirection.right => Positioned(
+                  top: 0,
+                  bottom: 0,
+                  right: 0,
+                  child: toolbar,
+                ),
+              },
+            ],
           ),
-        ],
-      );
-    } else {
-      body = Column(
-        verticalDirection:
-            stows.editorToolbarAlignment.value == AxisDirection.up
-            ? VerticalDirection.up
-            : VerticalDirection.down,
-        children: [
-          Expanded(child: canvas),
-          toolbar,
-          readonlyBanner,
-        ],
-      );
-    }
+        ),
+        readonlyBanner,
+      ],
+    );
 
     return ValueListenableBuilder(
       valueListenable: savingState,
@@ -1645,6 +1654,9 @@ class EditorState extends State<Editor> {
             ? null
             : AppBar(
                 toolbarHeight: kToolbarHeight,
+                // match the toolbar so they read as one surface
+                backgroundColor: colorScheme.surfaceContainerLow,
+                scrolledUnderElevation: 0,
                 title: widget.customTitle != null
                     ? Text(widget.customTitle!)
                     : Form(

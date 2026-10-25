@@ -27,16 +27,16 @@ class ToolbarIconButton extends StatelessWidget {
           !states.contains(WidgetState.selected)) {
         return Colors.transparent;
       }
-      return colorScheme.primary;
+      return colorScheme.primary.withValues(alpha: 0.15);
     });
     final foregroundColor = WidgetStateProperty.resolveWith((states) {
       if (states.contains(WidgetState.disabled)) {
         return colorScheme.onSurface.withValues(alpha: 0.4);
       }
       if (states.contains(WidgetState.selected)) {
-        return colorScheme.onPrimary;
+        return colorScheme.primary;
       }
-      return colorScheme.primary;
+      return colorScheme.onSurfaceVariant;
     });
     final buttonStyle = ButtonStyle(
       backgroundColor: backgroundColor,
@@ -44,6 +44,9 @@ class ToolbarIconButton extends StatelessWidget {
       foregroundColor: foregroundColor,
       iconSize: const WidgetStatePropertyAll(20),
       padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
+      shape: const WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.all(.circular(10))),
+      ),
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
 
