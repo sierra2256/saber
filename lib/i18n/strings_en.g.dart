@@ -323,6 +323,7 @@ class Translations$editor$en {
 	/// en: 'Paste again'
 	String get pasteAgain => 'Paste again';
 
+	late final Translations$editor$splitView$en splitView = Translations$editor$splitView$en.internal(_root);
 	late final Translations$editor$zoomBox$en zoomBox = Translations$editor$zoomBox$en.internal(_root);
 	late final Translations$editor$menu$en menu = Translations$editor$menu$en.internal(_root);
 	late final Translations$editor$readOnlyBanner$en readOnlyBanner = Translations$editor$readOnlyBanner$en.internal(_root);
@@ -1368,6 +1369,39 @@ class Translations$editor$elements$en {
 
 	/// en: 'Saved to elements'
 	String get saved => 'Saved to elements';
+}
+
+// Path: editor.splitView
+class Translations$editor$splitView$en {
+	Translations$editor$splitView$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Split view'
+	String get open => 'Split view';
+
+	/// en: 'Close split view'
+	String get close => 'Close split view';
+
+	/// en: 'Open next to this note'
+	String get chooseNote => 'Open next to this note';
+
+	/// en: 'Search notes'
+	String get search => 'Search notes';
+
+	/// en: 'New note'
+	String get newNote => 'New note';
+
+	/// en: 'Import PDF'
+	String get importPdf => 'Import PDF';
+
+	/// en: 'Copy to the other side'
+	String get copyToOtherSide => 'Copy to the other side';
+
+	/// en: 'Copied to the other side'
+	String get copied => 'Copied to the other side';
 }
 
 // Path: editor.zoomBox

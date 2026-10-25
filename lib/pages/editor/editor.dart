@@ -23,6 +23,7 @@ import 'package:saber/components/canvas/canvas_image.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
 import 'package:saber/components/canvas/zoom_writing_box.dart';
+import 'package:saber/components/editor/editor_pane.dart';
 import 'package:saber/components/editor/read_only_banner.dart';
 import 'package:saber/components/handwriting/convert_to_text_dialog.dart';
 import 'package:saber/components/handwriting/handwriting_setup.dart';
@@ -44,6 +45,7 @@ import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/handwriting/handwriting_recognizer.dart';
+import 'package:saber/data/keybinding_group.dart';
 import 'package:saber/data/nextcloud/saber_syncer.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
@@ -58,6 +60,7 @@ import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/data/tools/table_tidier.dart';
 import 'package:saber/data/tools/tape.dart';
 import 'package:saber/i18n/strings.g.dart';
+import 'package:saber/pages/editor/split_editor.dart';
 import 'package:saber/pages/home/whiteboard.dart';
 import 'package:sbn/change.dart';
 import 'package:super_clipboard/super_clipboard.dart';
@@ -133,7 +136,7 @@ class Editor extends StatefulWidget {
 class EditorState extends State<Editor> {
   final log = Logger('EditorState');
 
-  late var coreInfo = EditorCoreInfo.placeholder;
+  late var coreInfo = EditorCoreInfo.newPlaceholder();
 
   final _canvasGestureDetectorKey = GlobalKey<CanvasGestureDetectorState>();
   final _transformationController = TransformationController();
@@ -313,6 +316,7 @@ class EditorState extends State<Editor> {
 
   void _setState() => setState(() {});
 
+  final _keybindings = KeybindingGroup();
   Keybinding? _ctrlZ, _ctrlY, _ctrlShiftZ;
   void _assignKeybindings() {
     _ctrlZ = Keybinding([
@@ -328,15 +332,24 @@ class EditorState extends State<Editor> {
       KeyCode.shift,
       KeyCode.from(LogicalKeyboardKey.keyZ),
     ], inclusive: true);
-    Keybinder.bind(_ctrlZ!, undo);
-    Keybinder.bind(_ctrlY!, redo);
-    Keybinder.bind(_ctrlShiftZ!, redo);
+    // in split view, only the active editor reacts to shortcuts
+    _keybindings.bind(_ctrlZ!, () {
+      if (isActiveEditor) undo();
+    });
+    _keybindings.bind(_ctrlY!, () {
+      if (isActiveEditor) redo();
+    });
+    _keybindings.bind(_ctrlShiftZ!, () {
+      if (isActiveEditor) redo();
+    });
   }
 
+  /// Whether this editor should react to keyboard shortcuts,
+  /// see [EditorPane].
+  bool get isActiveEditor => mounted && EditorPane.isActiveAt(context);
+
   void _removeKeybindings() {
-    if (_ctrlZ != null) Keybinder.remove(_ctrlZ!);
-    if (_ctrlY != null) Keybinder.remove(_ctrlY!);
-    if (_ctrlShiftZ != null) Keybinder.remove(_ctrlShiftZ!);
+    _keybindings.removeAll();
   }
 
   /// Creates pages until the given page index exists,
@@ -450,7 +463,7 @@ class EditorState extends State<Editor> {
             stroke.shift(Offset(-item.offset!.left, -item.offset!.top));
           }
           final select = Select.currentSelect;
-          if (select.doneSelecting) {
+          if (select.isDoneSelectingFor(this)) {
             select.selectResult.path = select.selectResult.path.shift(
               Offset(-item.offset!.left, -item.offset!.top),
             );
@@ -495,7 +508,7 @@ class EditorState extends State<Editor> {
       }
 
       if (item.type != .move) {
-        Select.currentSelect.unselect();
+        Select.currentSelect.unselectFor(this);
       }
     });
 
@@ -652,7 +665,7 @@ class EditorState extends State<Editor> {
     } else if (currentTool is Select) {
       final select = currentTool as Select;
       final handle =
-          select.doneSelecting &&
+          select.isDoneSelectingFor(this) &&
               select.selectResult.pageIndex == dragPageIndex!
           ? SelectionHandle.hitTest(
               position,
@@ -668,12 +681,13 @@ class EditorState extends State<Editor> {
           page: page,
           startPosition: position,
         );
-      } else if (select.doneSelecting &&
+      } else if (select.isDoneSelectingFor(this) &&
           select.selectResult.pageIndex == dragPageIndex! &&
           select.selectResult.path.contains(position)) {
         // drag selection in onDrawUpdate
       } else {
         select.onDragStart(position, dragPageIndex!);
+        select.owner = this;
         history.canRedo = true; // selection doesn't affect history
       }
     } else if (currentTool is LaserPointer) {
@@ -684,7 +698,7 @@ class EditorState extends State<Editor> {
     moveOffset = .zero;
 
     if (currentTool is! Select) {
-      Select.currentSelect.unselect();
+      Select.currentSelect.unselectFor(this);
     }
 
     // setState to let canvas know about currentStroke
@@ -713,7 +727,7 @@ class EditorState extends State<Editor> {
       if (_selectionTransformer != null) {
         _selectionTransformer!.update(position);
         page.redrawStrokes();
-      } else if (select.doneSelecting) {
+      } else if (select.isDoneSelectingFor(this)) {
         for (final stroke in select.selectResult.strokes) {
           stroke.shift(offset);
         }
@@ -849,7 +863,7 @@ class EditorState extends State<Editor> {
 
         if (moveOffset == .zero) return;
         final select = currentTool as Select;
-        if (select.doneSelecting) {
+        if (select.isDoneSelectingFor(this)) {
           history.recordChange(
             EditorHistoryItem(
               type: .move,
@@ -869,7 +883,7 @@ class EditorState extends State<Editor> {
           select.onDragEnd(page.strokes, page.images);
 
           if (select.selectResult.isEmpty) {
-            Select.currentSelect.unselect();
+            Select.currentSelect.unselectFor(this);
           }
         }
       } else if (currentTool is LaserPointer) {
@@ -973,7 +987,7 @@ class EditorState extends State<Editor> {
     _toolBeforeStylusButton = null;
 
     if (currentTool case final Select select
-        when select.doneSelecting && !select.selectResult.isEmpty) {
+        when select.isDoneSelectingFor(this) && !select.selectResult.isEmpty) {
       // Stay in the select tool so the selection can be moved
       return false;
     }
@@ -1629,7 +1643,8 @@ class EditorState extends State<Editor> {
   /// so they can be inserted into any note.
   void saveSelectionAsElement() {
     final select = Select.currentSelect;
-    if (!select.doneSelecting || select.selectResult.strokes.isEmpty) return;
+    if (!select.isDoneSelectingFor(this) || select.selectResult.strokes.isEmpty)
+      return;
 
     final element = CanvasElement.fromStrokes(select.selectResult.strokes);
     stows.savedElements.value = [
@@ -1640,11 +1655,37 @@ class EditorState extends State<Editor> {
         ?.showSnackBar(SnackBar(content: Text(t.editor.elements.saved)));
   }
 
+  /// Saves now (and waits for any save in progress),
+  /// e.g. before the note is opened somewhere else.
+  Future<void> flushSave() async {
+    while (savingState.value == .saving) {
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+    _renameTimer?.cancel();
+    await _renameFileNow();
+    if (savingState.value == .waitingToSave) await saveToFile();
+  }
+
+  /// In split view, copies the selected strokes to the note on the
+  /// other side, in the middle of the visible part of its current page.
+  void copySelectionToOtherSide() {
+    final select = Select.currentSelect;
+    if (!select.isDoneSelectingFor(this)) return;
+    final strokes = select.selectResult.strokes;
+    if (strokes.isEmpty) return;
+
+    final other = SplitEditorPage.maybeOf(context)?.otherEditor(this);
+    if (other == null || other.coreInfo.readOnly) return;
+    other.insertElement(CanvasElement.fromStrokes(strokes));
+    ScaffoldMessenger.maybeOf(context)
+        ?.showSnackBar(SnackBar(content: Text(t.editor.splitView.copied)));
+  }
+
   /// Recognizes the handwriting in the current selection, then copies
   /// the text or replaces the strokes with typed text on the page.
   Future<void> convertSelectionToText() async {
     final select = Select.currentSelect;
-    if (!select.doneSelecting) return;
+    if (!select.isDoneSelectingFor(this)) return;
     final strokes = select.selectResult.strokes
         .where(HandwritingRecognizer.isHandwriting)
         .toList();
@@ -1694,7 +1735,7 @@ class EditorState extends State<Editor> {
           images: [],
         ),
       );
-      Select.currentSelect.unselect();
+      Select.currentSelect.unselectFor(this);
 
       final controller = page.quill.controller;
       final document = controller.document;
@@ -1780,7 +1821,8 @@ class EditorState extends State<Editor> {
         path: Path()
           ..addRect(CanvasElement.boundsOf(strokes).inflate(Select.padding)),
       )
-      ..doneSelecting = true;
+      ..doneSelecting = true
+      ..owner = this;
 
     page.redrawStrokes();
     autosaveAfterDelay();
@@ -1908,6 +1950,8 @@ class EditorState extends State<Editor> {
     final showTitleInToolbar =
         !isToolbarVertical && MediaQuery.sizeOf(context).width >= 1000;
 
+    final splitView = SplitEditorPage.maybeOf(context);
+
     final Widget toolbar = Collapsible(
       axis: isToolbarVertical
           ? CollapsibleAxis.horizontal
@@ -1946,7 +1990,7 @@ class EditorState extends State<Editor> {
           currentTool: currentTool,
           duplicateSelection: () {
             final select = currentTool as Select;
-            if (!select.doneSelecting) return;
+            if (!select.isDoneSelectingFor(this)) return;
 
             setState(() {
               final page = coreInfo.pages[select.selectResult.pageIndex];
@@ -1987,7 +2031,7 @@ class EditorState extends State<Editor> {
           },
           deleteSelection: () {
             final select = currentTool as Select;
-            if (!select.doneSelecting) {
+            if (!select.isDoneSelectingFor(this)) {
               return;
             }
 
@@ -2029,7 +2073,7 @@ class EditorState extends State<Editor> {
               } else if (currentTool is Select) {
                 // Changes color of selected strokes
                 final select = currentTool as Select;
-                if (select.doneSelecting) {
+                if (select.isDoneSelectingFor(this)) {
                   final strokes = select.selectResult.strokes;
 
                   final colorChange = <Stroke, Change<Color>>{};
@@ -2141,6 +2185,16 @@ class EditorState extends State<Editor> {
           showingPages: showPageSidebar,
           toggleZoomBox: toggleZoomBox,
           zoomBoxOpen: zoomBox != null,
+          hasSelection: Select.currentSelect.isDoneSelectingFor(this),
+          copySelectionToOtherSide: splitView != null
+              ? copySelectionToOtherSide
+              : null,
+          openSplitView: splitView == null && widget.customTitle == null
+              ? () => SplitEditorPage.open(context, this)
+              : null,
+          closeSplitView: splitView != null
+              ? () => splitView.close(keep: this)
+              : null,
           showPages: () => _setPageSidebarShown(!showPageSidebar),
           showNoteSettings: () {
             showModalBottomSheet(
@@ -2371,7 +2425,9 @@ class EditorState extends State<Editor> {
 
   Widget pageBuilder(BuildContext context, int pageIndex) {
     final page = coreInfo.pages[pageIndex];
-    final currentStroke = Pen.currentStroke?.pageIndex == pageIndex
+    // In split view, the other editor might be drawing
+    final currentStroke =
+        _isDrawing && Pen.currentStroke?.pageIndex == pageIndex
         ? Pen.currentStroke
         : null;
     return Canvas(
@@ -2387,7 +2443,12 @@ class EditorState extends State<Editor> {
           : null,
       currentSelection: () {
         if (currentTool is! Select) return null;
-        final selectResult = (currentTool as Select).selectResult;
+        final select = currentTool as Select;
+        // In split view, the selection might be in the other editor
+        if (select.owner != null && !identical(select.owner, this)) {
+          return null;
+        }
+        final selectResult = select.selectResult;
         if (selectResult.pageIndex != pageIndex) return null;
         return selectResult;
       }(),
@@ -2458,6 +2519,7 @@ class EditorState extends State<Editor> {
       child: ZoomWritingBox(
         zoomBox: zoomBox,
         coreInfo: coreInfo,
+        getCurrentStroke: () => _isDrawing ? Pen.currentStroke : null,
         onDrawStart: (position) {
           if (coreInfo.readOnly) return;
           if (currentTool == Tool.textEditing) return;
