@@ -116,16 +116,23 @@ class CanvasGestureDetector extends StatefulWidget {
     required List<EditorPage> pages,
     required double screenWidth,
     required TransformationController transformationController,
+    double offsetInPage = 0,
   }) {
     final topOfPage = -CanvasGestureDetector.getTopOfPage(
       pageIndex: pageIndex,
       pages: pages,
       screenWidth: screenWidth,
     );
+    // [offsetInPage] is in page coordinates, but the page may be shrunk
+    // to fit the screen
+    final pageWidth = pages[pageIndex].size.width;
+    final fittedScale = pageWidth > 0
+        ? min(pageWidth, screenWidth) / pageWidth
+        : 1.0;
     transformationController.value = Matrix4.translationValues(
       0,
       // Slight upwards offset so that the page is not flush with the top of the screen
-      topOfPage + 50,
+      topOfPage + 50 - offsetInPage * fittedScale,
       0,
     );
   }
@@ -373,11 +380,23 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
       }
     } else if (widget.initialPageIndex != null) {
       // if we're opening a different note, scroll to the last recorded page
+      final page = widget.pages[widget.initialPageIndex!];
+      final highlightedTodo = page.todos
+          .where((todo) => todo.id == page.highlightedTodoId)
+          .firstOrNull;
       CanvasGestureDetector.scrollToPage(
         pageIndex: widget.initialPageIndex!,
         pages: widget.pages,
         screenWidth: MediaQuery.sizeOf(context).width,
         transformationController: widget._transformationController,
+        // show the highlighted to-do a third of the way down the screen
+        offsetInPage: highlightedTodo == null
+            ? 0
+            : max(
+                0,
+                highlightedTodo.rect.top -
+                    MediaQuery.sizeOf(context).height / 3,
+              ),
       );
     }
   }

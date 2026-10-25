@@ -48,6 +48,7 @@ class Translations with BaseTranslations<AppLocale, Translations> {
 	late final Translations$editor$en editor = Translations$editor$en.internal(_root);
 	late final Translations$quickMemo$en quickMemo = Translations$quickMemo$en.internal(_root);
 	late final Translations$handwriting$en handwriting = Translations$handwriting$en.internal(_root);
+	late final Translations$todos$en todos = Translations$todos$en.internal(_root);
 }
 
 // Path: common
@@ -372,6 +373,47 @@ class Translations$handwriting$en {
 	String get straighten => 'Straighten handwriting';
 
 	late final Translations$handwriting$search$en search = Translations$handwriting$search$en.internal(_root);
+}
+
+// Path: todos
+class Translations$todos$en {
+	Translations$todos$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'To-dos'
+	String get title => 'To-dos';
+
+	/// en: '(one) {1 open to-do} (other) {$n open to-dos}'
+	String openCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(n,
+		one: '1 open to-do',
+		other: '${n} open to-dos',
+	);
+
+	late final Translations$todos$filter$en filter = Translations$todos$filter$en.internal(_root);
+
+	/// en: 'No to-dos yet. In a note, tap the page with the to-do tool, or draw a small square with the shape pen.'
+	String get empty => 'No to-dos yet. In a note, tap the page with the to-do tool, or draw a small square with the shape pen.';
+
+	/// en: 'Nothing left to do.'
+	String get allDone => 'Nothing left to do.';
+
+	/// en: 'No to-dos are done yet.'
+	String get noneDone => 'No to-dos are done yet.';
+
+	/// en: 'Top level'
+	String get topLevel => 'Top level';
+
+	/// en: 'Page $n'
+	String page({required Object n}) => 'Page ${n}';
+
+	/// en: 'done $date'
+	String doneOn({required Object date}) => 'done ${date}';
+
+	/// en: 'To-do'
+	String get unlabeled => 'To-do';
 }
 
 // Path: home.tabs
@@ -1195,6 +1237,9 @@ class Translations$editor$pens$en {
 
 	/// en: 'Tape'
 	String get tape => 'Tape';
+
+	/// en: 'To-do'
+	String get todo => 'To-do';
 }
 
 // Path: editor.penOptions
@@ -1675,6 +1720,24 @@ class Translations$handwriting$search$en {
 
 	/// en: 'Indexing handwriting…'
 	String get indexing => 'Indexing handwriting…';
+}
+
+// Path: todos.filter
+class Translations$todos$filter$en {
+	Translations$todos$filter$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Open'
+	String get open => 'Open';
+
+	/// en: 'Done'
+	String get done => 'Done';
+
+	/// en: 'All'
+	String get all => 'All';
 }
 
 // Path: sentry.consent.description

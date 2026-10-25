@@ -34,6 +34,7 @@ import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/tools/tape.dart';
+import 'package:saber/data/tools/todo_tool.dart';
 import 'package:saber/i18n/strings.g.dart';
 
 class Toolbar extends StatefulWidget {
@@ -564,6 +565,12 @@ class _ToolbarState extends State<Toolbar> {
                           : null,
                     ),
                   ),
+                ],
+              ),
+              _ToolbarDivider(axis: toolbarAxis),
+              _ToolbarGroup(
+                axis: toolbarAxis,
+                children: [
                   ToolbarIconButton(
                     tooltip: t.editor.toolbar.text,
                     selected: widget.textEditing,
@@ -712,6 +719,19 @@ class _ToolbarState extends State<Toolbar> {
                   },
             child: Text(t.editor.pens.tape),
           ),
+          MenuItemButton(
+            leadingIcon: const Icon(TodoTool.todoIcon),
+            trailingIcon: widget.currentTool == TodoTool.currentTodoTool
+                ? const Icon(Icons.check)
+                : null,
+            onPressed: widget.readOnly
+                ? null
+                : () {
+                    toolOptionsType.value = .hide;
+                    widget.setTool(TodoTool.currentTodoTool);
+                  },
+            child: Text(t.editor.pens.todo),
+          ),
           if (widget.insertElement != null && !widget.restricted)
             MenuItemButton(
               leadingIcon: const Icon(Icons.interests_outlined),
@@ -733,13 +753,16 @@ class _ToolbarState extends State<Toolbar> {
           selected:
               controller.isOpen ||
               showingElements ||
-              widget.currentTool == Tape.currentTape,
+              widget.currentTool == Tape.currentTape ||
+              widget.currentTool == TodoTool.currentTodoTool,
           enabled: !widget.readOnly,
           onPressed: () =>
               controller.isOpen ? controller.close() : controller.open(),
           padding: buttonPadding,
           child: widget.currentTool == Tape.currentTape
               ? const FaIcon(Tape.tapeIcon, size: 16)
+              : widget.currentTool == TodoTool.currentTodoTool
+              ? const Icon(TodoTool.todoIcon)
               : const Icon(Icons.add_circle_outline),
         ),
       ),

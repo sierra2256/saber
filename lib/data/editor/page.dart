@@ -11,6 +11,7 @@ import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/components/canvas/inner_canvas.dart';
 import 'package:saber/components/canvas/pencil_shader.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
+import 'package:saber/data/editor/todo.dart';
 import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:sbn/has_size.dart';
 
@@ -54,6 +55,16 @@ class EditorPage extends ChangeNotifier implements HasSize {
   /// The target area of the zoom writing box, if it's open on this page.
   Rect? zoomBoxTarget;
   final List<EditorImage> images;
+
+  /// The to-do boxes on this page.
+  ///
+  /// This list is replaced (rather than modified) when it changes,
+  /// so the old list can be kept for undo.
+  List<TodoBox> todos;
+
+  /// The to-do to highlight briefly, e.g. after opening it from the
+  /// to-do overview. This isn't saved.
+  int? highlightedTodoId;
   final QuillStruct quill;
 
   EditorImage? backgroundImage;
@@ -61,6 +72,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
   bool get isEmpty =>
       strokes.isEmpty &&
       images.isEmpty &&
+      todos.isEmpty &&
       quill.controller.document.isEmpty() &&
       backgroundImage == null;
   bool get isNotEmpty => !isEmpty;
@@ -115,6 +127,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
     List<EditorImage>? images,
     QuillStruct? quill,
     this.backgroundImage,
+    List<TodoBox>? todos,
   }) : assert(
          (size == null) || (width == null && height == null),
          "size and width/height shouldn't both be specified",
@@ -123,6 +136,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
        strokes = strokes ?? [],
        laserStrokes = [],
        images = images ?? [],
+       todos = todos ?? const [],
        quill =
            quill ??
            QuillStruct(
@@ -173,6 +187,10 @@ class EditorPage extends ChangeNotifier implements HasSize {
               assetCache: assetCache,
             )
           : null,
+      todos: [
+        for (final todo in (json['td'] as List?) ?? const [])
+          TodoBox.fromJson(Map<String, dynamic>.from(todo as Map)),
+      ],
     );
   }
 
@@ -191,6 +209,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
     if (!quill.controller.document.isEmpty())
       'q': quill.controller.document.toDelta().toJson(),
     if (backgroundImage != null) 'b': backgroundImage?.toJson(assets),
+    if (todos.isNotEmpty) 'td': [for (final todo in todos) todo.toJson()],
   };
 
   /// A cheap hash of how this page looks, used to tell whether it changed,
@@ -202,6 +221,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
     Object.hashAll(images.map((image) => Object.hash(image, image.dstRect))),
     backgroundImage,
     quill.controller.document.toPlainText(),
+    Object.hashAll(todos),
   );
 
   /// Inserts a stroke, while keeping the strokes sorted by
@@ -357,12 +377,14 @@ class EditorPage extends ChangeNotifier implements HasSize {
     List<EditorImage>? images,
     QuillStruct? quill,
     EditorImage? backgroundImage,
+    List<TodoBox>? todos,
   }) => EditorPage(
     size: size ?? this.size,
     strokes: strokes ?? this.strokes,
     images: images ?? this.images,
     quill: quill ?? this.quill,
     backgroundImage: backgroundImage ?? this.backgroundImage,
+    todos: todos ?? this.todos,
   );
 
   /// Clones this page for use in a screenshot.

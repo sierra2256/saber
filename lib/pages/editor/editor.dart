@@ -17,6 +17,7 @@ import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:saber/components/canvas/_asset_cache.dart';
+import 'package:saber/components/canvas/_rectangle_stroke.dart';
 import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/canvas.dart';
 import 'package:saber/components/canvas/canvas_gesture_detector.dart';
@@ -43,6 +44,7 @@ import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/editor_history.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/editor/todo.dart';
 import 'package:saber/data/editor/zoom_box.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
@@ -63,6 +65,7 @@ import 'package:saber/data/tools/selection_transform.dart';
 import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/data/tools/table_tidier.dart';
 import 'package:saber/data/tools/tape.dart';
+import 'package:saber/data/tools/todo_tool.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/split_editor.dart';
 import 'package:saber/pages/home/whiteboard.dart';
@@ -96,6 +99,7 @@ class Editor extends StatefulWidget {
     this.initialPageIndex,
     this.quickMemo = false,
     this.onQuickMemoDone,
+    this.highlightTodo,
   }) : initialPath = path != null
            ? Future.value(path)
            : FileManager.newFilePath('/'),
@@ -118,6 +122,10 @@ class Editor extends StatefulWidget {
 
   /// Closes the quick memo, after it's been saved.
   final Future<void> Function()? onQuickMemoDone;
+
+  /// The id of a to-do box on [initialPageIndex] to highlight briefly,
+  /// e.g. when it was opened from the to-do overview.
+  final int? highlightTodo;
 
   /// The file extension used by the app.
   /// Files with this extension are
@@ -205,6 +213,8 @@ class EditorState extends State<Editor> {
         return LaserPointer.currentLaserPointer;
       case .tape:
         return Tape.currentTape;
+      case .todo:
+        return TodoTool.currentTodoTool;
     }
   }();
   Tool get currentTool => _currentTool;
@@ -278,6 +288,15 @@ class EditorState extends State<Editor> {
       coreInfo.initialPageIndex = pageIndex;
       // don't restore the last scroll position instead
       CanvasGestureDetector.forgetTransform(filePath);
+
+      if (widget.highlightTodo case final id?) {
+        final page = coreInfo.pages[pageIndex];
+        page.highlightedTodoId = id;
+        _highlightTodoTimer = Timer(highlightTodoDuration, () {
+          page.highlightedTodoId = null;
+          page.redrawCurrentStroke();
+        });
+      }
     }
     if (coreInfo.readOnly) {
       log.info('Loaded file as read-only: ${coreInfo.readOnlyReason}');
@@ -520,6 +539,13 @@ class EditorState extends State<Editor> {
             image.dstRect = change.previous;
           });
           removeExcessPages();
+
+        case .todos:
+          createPage(item.pageIndex);
+          final page = coreInfo.pages[item.pageIndex];
+          page.todos = item.todosChange!.previous;
+          page.redrawStrokes();
+          removeExcessPages();
       }
 
       if (item.type != .move) {
@@ -582,6 +608,8 @@ class EditorState extends State<Editor> {
             ),
           ),
         );
+      case .todos:
+        undo(item.copyWith(todosChange: item.todosChange!.reverse()));
     }
   }
 
@@ -642,17 +670,91 @@ class EditorState extends State<Editor> {
     dragPageIndex = onWhichPageIsFocalPoint(details.focalPoint);
     if (dragPageIndex == null) return false;
 
+    _todoOnlyGesture = false;
+    final page = coreInfo.pages[dragPageIndex!];
+    final position = page.renderBox!.globalToLocal(details.focalPoint);
+    final touchesTodo = todoAt(page, position) != null;
+
     if (currentTool == Tool.textEditing) {
+      if (touchesTodo) return _todoOnlyGesture = true;
       return false;
     } else if (stows.editorFingerDrawing.value ||
         currentPointerKind == PointerDeviceKind.stylus ||
         currentPointerKind == PointerDeviceKind.invertedStylus ||
         currentPressure != null) {
       return true;
+    } else if (touchesTodo) {
+      // Any finger can tick a to-do
+      return _todoOnlyGesture = true;
     } else {
       log.fine('Non-stylus found, rejected stroke');
       return false;
     }
+  }
+
+  /// The to-do box at [position] on [page], if any.
+  TodoBox? todoAt(EditorPage page, Offset position) {
+    for (final todo in page.todos.reversed) {
+      if (todo.contains(position)) return todo;
+    }
+    return null;
+  }
+
+  /// How long [Editor.highlightTodo] is highlighted for.
+  static const highlightTodoDuration = Duration(seconds: 4);
+  Timer? _highlightTodoTimer;
+
+  /// Whether the current gesture was only accepted because it started
+  /// on a to-do box, e.g. a finger when finger drawing is off.
+  var _todoOnlyGesture = false;
+
+  /// The to-do box the current gesture started on. It is ticked (or
+  /// unticked) if the gesture ends without moving much.
+  TodoBox? _todoTap;
+
+  /// Where the current gesture started.
+  var _gestureStart = Offset.zero;
+
+  /// Whether the current gesture should be ignored,
+  /// e.g. because it moved away from a to-do box.
+  var _ignoreGesture = false;
+
+  /// The page's to-dos at the start of an eraser gesture,
+  /// used to record erased to-dos in the history.
+  List<TodoBox>? _todosBeforeErasing;
+
+  /// Replaces the to-dos on [page] and records the change in the history.
+  void _changeTodos(int pageIndex, List<TodoBox> todos) {
+    final page = coreInfo.pages[pageIndex];
+    final previous = page.todos;
+    page.todos = todos;
+    page.redrawStrokes();
+    history.recordChange(
+      EditorHistoryItem(
+        type: .todos,
+        pageIndex: pageIndex,
+        strokes: [],
+        images: [],
+        todosChange: Change(previous: previous, current: todos),
+      ),
+    );
+  }
+
+  /// Closes the to-do with [id] on page [pageIndex], or reopens it.
+  @visibleForTesting
+  void toggleTodo(int pageIndex, int id) {
+    final page = coreInfo.pages[pageIndex];
+    final now = DateTime.now();
+    _changeTodos(pageIndex, [
+      for (final todo in page.todos)
+        if (todo.id == id) todo.toggled(now) else todo,
+    ]);
+  }
+
+  /// Adds [todo] to page [pageIndex].
+  void _addTodo(int pageIndex, TodoBox todo) {
+    createPage(pageIndex);
+    _changeTodos(pageIndex, [...coreInfo.pages[pageIndex].todos, todo]);
   }
 
   void onDrawStart(ScaleStartDetails details) {
@@ -670,7 +772,29 @@ class EditorState extends State<Editor> {
     // touching the screen between presses isn't a double press
     _lastStylusButtonPress = null;
     closePenMenu();
+    _gestureStart = position;
+    _ignoreGesture = false;
+    // The eraser erases to-do boxes instead of ticking them
+    _todoTap = currentTool is Eraser ? null : todoAt(page, position);
+    if (_todoOnlyGesture && _todoTap == null) {
+      _ignoreGesture = true;
+      return;
+    }
 
+    if (_todoTap != null || currentTool is TodoTool) {
+      // The tool starts in [drawUpdateAt] if this isn't a tap
+      previousPosition = position;
+      moveOffset = .zero;
+      Select.currentSelect.unselectFor(this);
+      return;
+    }
+    _startToolAt(position, page);
+
+    // setState to let canvas know about currentStroke
+    setState(() {});
+  }
+
+  void _startToolAt(Offset position, EditorPage page) {
     if (currentTool is Pen) {
       (currentTool as Pen).onDragStart(
         position,
@@ -679,6 +803,7 @@ class EditorState extends State<Editor> {
         currentPressure,
       );
     } else if (currentTool is Eraser) {
+      _todosBeforeErasing = page.todos;
       _erase(currentTool as Eraser, position, page);
     } else if (currentTool is Select) {
       final select = currentTool as Select;
@@ -718,9 +843,6 @@ class EditorState extends State<Editor> {
     if (currentTool is! Select) {
       Select.currentSelect.unselectFor(this);
     }
-
-    // setState to let canvas know about currentStroke
-    setState(() {});
   }
 
   void onDrawUpdate(ScaleUpdateDetails details) {
@@ -731,6 +853,22 @@ class EditorState extends State<Editor> {
   /// Continues a draw gesture at [position] on page [dragPageIndex].
   void drawUpdateAt(Offset position) {
     final page = coreInfo.pages[dragPageIndex!];
+    if (_ignoreGesture) return;
+    if (_todoTap != null || currentTool is TodoTool) {
+      if ((position - _gestureStart).distance <= TodoTool.maxTapMovement) {
+        return;
+      }
+      // Not a tap
+      final wasTodoTap = _todoTap != null;
+      _todoTap = null;
+      if (_todoOnlyGesture || currentTool is TodoTool || !wasTodoTap) {
+        _ignoreGesture = true;
+        return;
+      }
+      // Draw from where the gesture started, e.g. writing over a box
+      _startToolAt(_gestureStart, page);
+      setState(() {});
+    }
     final offset = position - previousPosition;
 
     if (currentTool is Pen) {
@@ -771,10 +909,37 @@ class EditorState extends State<Editor> {
     final page = coreInfo.pages[dragPageIndex!];
     bool shouldSave = true;
     setState(() {
+      if (_ignoreGesture) {
+        shouldSave = false;
+        return;
+      }
+      if (_todoTap case final todo?) {
+        toggleTodo(dragPageIndex!, todo.id);
+        return;
+      }
+      if (currentTool is TodoTool) {
+        _addTodo(
+          dragPageIndex!,
+          TodoBox.at(_gestureStart, TodoBox.sizeFor(coreInfo.lineHeight)),
+        );
+        // Write the label with the pen
+        currentTool = Pen.currentPen;
+        return;
+      }
       if (currentTool is Pen) {
         var newStroke = (currentTool as Pen).onDragEnd();
         if (newStroke == null) return;
         if (newStroke.isEmpty) return;
+
+        if (currentTool is ShapePen &&
+            newStroke is RectangleStroke &&
+            TodoBox.looksLikeBox(newStroke.rect, coreInfo.lineHeight)) {
+          // A small square becomes a to-do box
+          final rect = newStroke.rect;
+          final size = (rect.width + rect.height) / 2;
+          _addTodo(newStroke.pageIndex, TodoBox.at(rect.center, size));
+          return;
+        }
 
         if (currentTool is Tape) {
           if (Tape.isTap(newStroke)) {
@@ -836,6 +1001,19 @@ class EditorState extends State<Editor> {
             stows.disableEraserAfterUse.value) {
           // restore previous tool
           currentTool = _lastNonEraserTool;
+        }
+        final todosBefore = _todosBeforeErasing;
+        _todosBeforeErasing = null;
+        if (todosBefore != null && !identical(todosBefore, page.todos)) {
+          history.recordChange(
+            EditorHistoryItem(
+              type: .todos,
+              pageIndex: dragPageIndex!,
+              strokes: [],
+              images: [],
+              todosChange: Change(previous: todosBefore, current: page.todos),
+            ),
+          );
         }
         if (eraser.partial) {
           final (:erased, :created) = eraser.onPartialDragEnd();
@@ -919,11 +1097,22 @@ class EditorState extends State<Editor> {
     if (shouldSave) autosaveAfterDelay();
 
     _isDrawing = false;
+    _todoTap = null;
+    _ignoreGesture = false;
     // apply any stylus button changes that happened during the stroke
     _applyStylusButtonState();
   }
 
   void _erase(Eraser eraser, Offset position, EditorPage page) {
+    if (!eraser.highlighterOnly &&
+        page.todos.any(
+          (todo) => todo.rect.inflate(eraser.size).contains(position),
+        )) {
+      page.todos = [
+        for (final todo in page.todos)
+          if (!todo.rect.inflate(eraser.size).contains(position)) todo,
+      ];
+    }
     if (eraser.partial) {
       eraser.erasePartially(position, page.strokes);
     } else {
@@ -3031,6 +3220,7 @@ class EditorState extends State<Editor> {
     _delayedSaveTimer?.cancel();
     _watchServerTimer?.cancel();
     _lastSeenPointerCountTimer?.cancel();
+    _highlightTodoTimer?.cancel();
 
     _removeKeybindings();
 

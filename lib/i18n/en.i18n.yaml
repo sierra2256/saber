@@ -302,6 +302,7 @@ editor:
     shapePen: Shape pen
     laserPointer: Laser pointer
     tape: Tape
+    todo: To-do
   penOptions:
     size: Size
   favoritePens:
@@ -448,3 +449,19 @@ handwriting:
     noResults: No results
     page: Page $page
     indexing: Indexing handwriting…
+todos:
+  title: To-dos
+  openCount(plural, param=n):
+    one: 1 open to-do
+    other: $n open to-dos
+  filter:
+    open: Open
+    done: Done
+    all: All
+  empty: No to-dos yet. In a note, tap the page with the to-do tool, or draw a small square with the shape pen.
+  allDone: Nothing left to do.
+  noneDone: No to-dos are done yet.
+  topLevel: Top level
+  page(param=n): Page $n
+  doneOn(param=date): done $date
+  unlabeled: To-do
