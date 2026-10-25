@@ -282,7 +282,21 @@ class EditorPage extends ChangeNotifier implements HasSize {
 
   /// Triggers a redraw of the strokes. If you need to redraw images,
   /// call [setState] instead.
+  /// Notified when the committed strokes change,
+  /// but not while a new stroke is being drawn.
+  /// See [redrawStrokes] and [redrawCurrentStroke].
+  final strokesListenable = _RepaintNotifier();
+
+  /// Redraws everything on the page, e.g. after strokes are erased or moved.
   void redrawStrokes() {
+    notifyListeners();
+    strokesListenable.notify();
+  }
+
+  /// Only redraws what's being drawn on top of the page
+  /// (the current stroke, the lasso, laser strokes...),
+  /// which is much cheaper than [redrawStrokes] on pages with many strokes.
+  void redrawCurrentStroke() {
     notifyListeners();
   }
 
@@ -303,6 +317,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
       image.dispose();
     }
     backgroundImage?.dispose();
+    strokesListenable.dispose();
     super.dispose();
   }
 
@@ -316,6 +331,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
     quill.dispose();
     _pencilShader?.dispose();
     isRendered = false;
+    strokesListenable.dispose();
     super.dispose();
   }
 
@@ -370,4 +386,8 @@ class QuillStruct {
     ),
     focusNode: FocusNode(debugLabel: 'Screenshot Quill Focus Node'),
   );
+}
+
+class _RepaintNotifier extends ChangeNotifier {
+  void notify() => notifyListeners();
 }

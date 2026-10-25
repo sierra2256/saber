@@ -703,7 +703,8 @@ class EditorState extends State<Editor> {
 
     if (currentTool is Pen) {
       (currentTool as Pen).onDragUpdate(position, currentPressure);
-      page.redrawStrokes();
+      // only the new stroke changed
+      page.redrawCurrentStroke();
     } else if (currentTool is Eraser) {
       _erase(currentTool as Eraser, position, page);
       page.redrawStrokes();
@@ -711,6 +712,7 @@ class EditorState extends State<Editor> {
       final select = currentTool as Select;
       if (_selectionTransformer != null) {
         _selectionTransformer!.update(position);
+        page.redrawStrokes();
       } else if (select.doneSelecting) {
         for (final stroke in select.selectResult.strokes) {
           stroke.shift(offset);
@@ -719,13 +721,15 @@ class EditorState extends State<Editor> {
           image.dstRect = image.dstRect.shift(offset);
         }
         select.selectResult.path = select.selectResult.path.shift(offset);
+        page.redrawStrokes();
       } else {
         select.onDragUpdate(position);
+        // only the lasso changed
+        page.redrawCurrentStroke();
       }
-      page.redrawStrokes();
     } else if (currentTool is LaserPointer) {
       (currentTool as LaserPointer).onDragUpdate(position);
-      page.redrawStrokes();
+      page.redrawCurrentStroke();
     }
     previousPosition = position;
     moveOffset += offset;
@@ -871,7 +875,7 @@ class EditorState extends State<Editor> {
       } else if (currentTool is LaserPointer) {
         shouldSave = false;
         final newStroke = (currentTool as LaserPointer).onDragEnd(
-          page.redrawStrokes,
+          page.redrawCurrentStroke,
           (Stroke stroke) {
             page.laserStrokes.remove(stroke);
           },
@@ -2391,7 +2395,7 @@ class EditorState extends State<Editor> {
       if (oldZoomBox.pageIndex < coreInfo.pages.length) {
         coreInfo.pages[oldZoomBox.pageIndex]
           ..zoomBoxTarget = null
-          ..redrawStrokes();
+          ..redrawCurrentStroke();
       }
       return;
     }
@@ -2445,7 +2449,7 @@ class EditorState extends State<Editor> {
         onTargetChanged: (target) {
           coreInfo.pages[zoomBox.pageIndex]
             ..zoomBoxTarget = target
-            ..redrawStrokes();
+            ..redrawCurrentStroke();
         },
         onClose: toggleZoomBox,
       ),
