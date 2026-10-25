@@ -24,10 +24,13 @@ import 'package:saber/data/tools/tape.dart';
 /// only repaints [overlay] instead of every stroke on the page.
 enum CanvasPainterLayer {
   /// Highlighter strokes, which blend with what's below them
-  /// (the page background, images and text).
+  /// (the page background, images and text), and the page indicator.
+  ///
+  /// The page indicator is drawn here, in the same layer as images and
+  /// text, so that it repaints with them (e.g. when fonts finish loading).
   highlighters,
 
-  /// All other strokes, tape and the page indicator.
+  /// All other strokes and tape.
   ink,
 
   /// What changes while drawing: the current stroke, the detected shape,
@@ -80,11 +83,11 @@ class CanvasPainter extends CustomPainter {
 
     if (layers.contains(CanvasPainterLayer.highlighters)) {
       _drawHighlighterStrokes(canvas, canvasRect);
+      _drawPageIndicator(canvas, size);
     }
     if (layers.contains(CanvasPainterLayer.ink)) {
       _drawNonHighlighterStrokes(canvas);
       _drawTapes(canvas);
-      _drawPageIndicator(canvas, size);
     }
     if (layers.contains(CanvasPainterLayer.overlay)) {
       for (final stroke in laserStrokes) _drawLaserStroke(canvas, stroke);
