@@ -219,6 +219,15 @@ class Stows {
     volatile: !_isOnMainIsolate,
   );
 
+  /// Whether handwriting is recognized (on the device) so it can be
+  /// searched and converted to text. This requires downloading a
+  /// language model once, see [HandwritingSetup].
+  final handwritingRecognition = PlainStow(
+    'handwritingRecognition',
+    false,
+    volatile: !_isOnMainIsolate,
+  );
+
   /// What holding the stylus side button (e.g. the S Pen button) does.
   final stylusButtonAction = PlainStow(
     'stylusButtonAction',

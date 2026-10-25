@@ -117,6 +117,7 @@ settings:
     autoClearWhiteboardOnExit: Auto-clear the whiteboard
     disableEraserAfterUse: Auto-disable the eraser
     stylusButtonAction: Hold the stylus button for
+    handwritingRecognition: Handwriting recognition
     hideFingerDrawingToggle: Hide the finger drawing toggle
     autoDisableFingerDrawingWhenStylusDetected: Auto-disable finger drawing
     editorPromptRename: Prompt you to rename new notes
@@ -134,6 +135,7 @@ settings:
     preferGreyscale: For e-ink displays
     autoClearWhiteboardOnExit: Clears the whiteboard after you exit the app
     disableEraserAfterUse: Automatically switches back to the pen after using the eraser
+    handwritingRecognition: Search and convert handwriting, on this device only
     maxImageSize: Larger images will be compressed
     hideFingerDrawing:
       shown: Prevents accidental toggling
@@ -403,3 +405,23 @@ editor:
   pages: Pages
   untitled: Untitled
   needsToSaveBeforeExiting: Saving your changes… You can safely exit the editor when it's done
+handwriting:
+  setup:
+    title: Handwriting recognition
+    description: Saber can recognize your handwriting so you can search it and convert it to text. Your handwriting is recognized on this device and is never uploaded. This uses Google's ML Kit, which needs to download an English handwriting model (about 20 MB) once, and which may send anonymous usage statistics to Google.
+    download: Download
+    downloading: Downloading the handwriting model…
+    downloadFailed: Couldn't download the handwriting model. Check your connection and try again.
+  convert:
+    convertToText: Convert to text
+    recognizing: Recognizing handwriting…
+    nothingRecognized: No handwriting was recognized
+    copy: Copy
+    copied: Copied to clipboard
+    replace: Replace with text
+  search:
+    search: Search
+    hint: Search notes and handwriting
+    noResults: No results
+    page: Page $page
+    indexing: Indexing handwriting…

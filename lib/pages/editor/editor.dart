@@ -24,6 +24,8 @@ import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
 import 'package:saber/components/canvas/zoom_writing_box.dart';
 import 'package:saber/components/editor/read_only_banner.dart';
+import 'package:saber/components/handwriting/convert_to_text_dialog.dart';
+import 'package:saber/components/handwriting/handwriting_setup.dart';
 import 'package:saber/components/theming/adaptive_alert_dialog.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/components/theming/saber_theme.dart';
@@ -41,6 +43,7 @@ import 'package:saber/data/editor/zoom_box.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
+import 'package:saber/data/handwriting/handwriting_recognizer.dart';
 import 'package:saber/data/nextcloud/saber_syncer.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
@@ -1563,6 +1566,76 @@ class EditorState extends State<Editor> {
         ?.showSnackBar(SnackBar(content: Text(t.editor.elements.saved)));
   }
 
+  /// Recognizes the handwriting in the current selection, then copies
+  /// the text or replaces the strokes with typed text on the page.
+  Future<void> convertSelectionToText() async {
+    final select = Select.currentSelect;
+    if (!select.doneSelecting) return;
+    final strokes = select.selectResult.strokes
+        .where(HandwritingRecognizer.isHandwriting)
+        .toList();
+    if (strokes.isEmpty) return;
+
+    if (!await HandwritingSetup.ensureEnabled(context)) return;
+    if (!mounted) return;
+
+    final result = await showDialog<ConvertToTextResult>(
+      context: context,
+      builder: (context) => ConvertToTextDialog(strokes: strokes),
+    );
+    if (result == null || !mounted) return;
+
+    switch (result.action) {
+      case .copy:
+        await Clipboard.setData(ClipboardData(text: result.text));
+        if (!mounted) return;
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(SnackBar(content: Text(t.handwriting.convert.copied)));
+      case .replace:
+        replaceStrokesWithText(strokes, result.text);
+    }
+  }
+
+  /// Removes [strokes] and adds [text] to the end of the typed text
+  /// on their page.
+  ///
+  /// Typed text in Saber flows from the top of the page,
+  /// so the text can't be placed exactly where the strokes were.
+  @visibleForTesting
+  void replaceStrokesWithText(List<Stroke> strokes, String text) {
+    if (coreInfo.readOnly || strokes.isEmpty) return;
+    final pageIndex = strokes.first.pageIndex;
+    final page = coreInfo.pages[pageIndex];
+
+    setState(() {
+      for (final stroke in strokes) {
+        page.strokes.remove(stroke);
+      }
+      history.recordChange(
+        EditorHistoryItem(
+          type: .erase,
+          pageIndex: pageIndex,
+          strokes: strokes,
+          images: [],
+        ),
+      );
+      Select.currentSelect.unselect();
+
+      final controller = page.quill.controller;
+      final document = controller.document;
+      // documents always end with a newline
+      final index = document.length - 1;
+      controller.replaceText(
+        index,
+        0,
+        document.isEmpty() ? text : '\n$text',
+        null,
+      );
+    });
+    autosaveAfterDelay();
+  }
+
   /// Inserts [element] at [globalPosition], or in the middle of the
   /// visible part of the current page if [globalPosition] is null.
   void insertElement(CanvasElement element, {Offset? globalPosition}) {
@@ -1939,6 +2012,9 @@ class EditorState extends State<Editor> {
           pasteAgain: _lastPaste == null ? null : pasteAgain,
           insertElement: insertElement,
           saveSelectionAsElement: saveSelectionAsElement,
+          convertSelectionToText: HandwritingRecognizer.instance.isSupported
+              ? convertSelectionToText
+              : null,
           exportAsSba: exportAsSba,
           exportAsPdf: exportAsPdf,
           exportAsPng: exportAsPng,

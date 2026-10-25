@@ -54,6 +54,7 @@ class Toolbar extends StatefulWidget {
     required this.duplicateSelection,
     required this.deleteSelection,
     this.saveSelectionAsElement,
+    this.convertSelectionToText,
     this.insertElement,
     this.pasteAgain,
     required this.exportAsSba,
@@ -93,6 +94,10 @@ class Toolbar extends StatefulWidget {
   final VoidCallback duplicateSelection;
   final VoidCallback deleteSelection;
   final VoidCallback? saveSelectionAsElement;
+
+  /// Converts the selected handwriting to text,
+  /// or null if handwriting recognition isn't supported.
+  final VoidCallback? convertSelectionToText;
 
   /// Inserts a saved element into the current page.
   final ValueChanged<CanvasElement>? insertElement;
@@ -295,6 +300,7 @@ class _ToolbarState extends State<Toolbar> {
                   duplicateSelection: widget.duplicateSelection,
                   deleteSelection: widget.deleteSelection,
                   saveSelectionAsElement: widget.saveSelectionAsElement,
+                  convertSelectionToText: widget.convertSelectionToText,
                 ),
               },
             ),

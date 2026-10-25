@@ -21,6 +21,12 @@ class Stroke {
   final List<PointVector> points = [];
 
   bool get isEmpty => points.isEmpty;
+
+  /// The positions of the points along this stroke, without pressure,
+  /// e.g. for handwriting recognition.
+  ///
+  /// This is empty for shapes like [CircleStroke] and [RectangleStroke].
+  List<Offset> get centerline => [for (final point in points) point];
   int get length => points.length;
 
   int pageIndex;
