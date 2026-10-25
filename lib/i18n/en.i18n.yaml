@@ -116,6 +116,7 @@ settings:
     maxImageSize: Maximum image size
     autoClearWhiteboardOnExit: Auto-clear the whiteboard
     disableEraserAfterUse: Auto-disable the eraser
+    stylusButtonAction: Hold the stylus button for
     hideFingerDrawingToggle: Hide the finger drawing toggle
     autoDisableFingerDrawingWhenStylusDetected: Auto-disable finger drawing
     editorPromptRename: Prompt you to rename new notes
@@ -161,6 +162,10 @@ settings:
   accentColorPicker:
     pickAColor: Pick a color
   systemLanguage: Auto
+  stylusButtonActions:
+  - Eraser
+  - Lasso
+  - Nothing
   axisDirections:
   - Top
   - Right

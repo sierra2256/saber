@@ -4,6 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/prefs.dart';
+import 'package:saber/data/tools/eraser.dart';
+import 'package:saber/data/tools/pen.dart';
+import 'package:saber/data/tools/select.dart';
 import 'package:saber/pages/editor/editor.dart';
 
 import 'utils/test_mock_channel_handlers.dart';
@@ -53,6 +56,76 @@ void main() {
         expect(page.strokes, hasLength(0));
       });
     }
+
+    testWidgets('Releasing the stylus button restores the previous tool', (
+      tester,
+    ) async {
+      final editorState = await tester._pumpEditor();
+      await tester.pump();
+      expect(editorState.currentTool, isA<Pen>());
+
+      editorState.onStylusButtonChanged(true);
+      expect(editorState.currentTool, isA<Eraser>());
+      editorState.onStylusButtonChanged(false);
+      expect(editorState.currentTool, isA<Pen>());
+    });
+
+    testWidgets(
+      'Pressing the button mid-stroke does not interrupt the stroke',
+      (tester) async {
+        final editorState = await tester._pumpEditor();
+        await tester.pump();
+        final page = editorState.coreInfo.pages.first;
+        final center = tester.getCenter(find.byType(Editor));
+
+        final pointer = TestPointer(1, .stylus);
+        var position = center;
+        Future<void> move({int buttons = kPrimaryButton}) async {
+          position += const Offset(5, 5);
+          await tester.sendEventToBinding(
+            pointer.move(position, buttons: buttons),
+          );
+        }
+
+        await tester.sendEventToBinding(pointer.down(center));
+        await move();
+        await move();
+        // press the side button while touching the screen
+        await move(buttons: kPrimaryButton | kSecondaryButton);
+        expect(editorState.currentTool, isA<Pen>(), reason: 'Mid-stroke');
+        await move(buttons: kPrimaryButton | kSecondaryButton);
+        await tester.sendEventToBinding(pointer.up());
+        await tester.pump();
+        expect(page.strokes, hasLength(1), reason: 'Stroke was still drawn');
+      },
+    );
+
+    testWidgets('The stylus button can switch to the lasso instead', (
+      tester,
+    ) async {
+      stows.stylusButtonAction.value = .select;
+      addTearDown(() => stows.stylusButtonAction.value = .eraser);
+
+      final editorState = await tester._pumpEditor();
+      await tester.pump();
+      editorState.onStylusButtonChanged(true);
+      expect(editorState.currentTool, isA<Select>());
+      editorState.onStylusButtonChanged(false);
+      expect(editorState.currentTool, isA<Pen>());
+    });
+
+    testWidgets('The stylus button can be disabled', (tester) async {
+      stows.stylusButtonAction.value = .none;
+      addTearDown(() => stows.stylusButtonAction.value = .eraser);
+
+      final editorState = await tester._pumpEditor();
+      await tester.pump();
+      final page = editorState.coreInfo.pages.first;
+      await tester._stylusDrag(editorState, false);
+      expect(page.strokes, hasLength(1));
+      await tester._stylusDrag(editorState, false, buttons: kSecondaryButton);
+      expect(page.strokes, hasLength(2), reason: 'Should draw, not erase');
+    });
   });
 }
 

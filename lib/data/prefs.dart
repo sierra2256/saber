@@ -195,6 +195,14 @@ class Stows {
     false,
     volatile: !_isOnMainIsolate,
   );
+
+  /// What holding the stylus side button (e.g. the S Pen button) does.
+  final stylusButtonAction = PlainStow(
+    'stylusButtonAction',
+    StylusButtonAction.eraser,
+    codec: const EnumCodec(StylusButtonAction.values),
+    volatile: !_isOnMainIsolate,
+  );
   final hideFingerDrawingToggle = PlainStow(
     'hideFingerDrawingToggle',
     false,
@@ -406,6 +414,21 @@ class Stows {
   @pragma('vm:platform-const')
   static final isDesktop =
       Platform.isLinux || Platform.isWindows || Platform.isMacOS;
+}
+
+/// What holding the stylus side button does.
+///
+/// The tool is only switched while the button is held,
+/// and the previous tool is restored when it is released.
+enum StylusButtonAction {
+  /// Temporarily switch to the eraser.
+  eraser,
+
+  /// Temporarily switch to the lasso select tool.
+  select,
+
+  /// Ignore the stylus button.
+  none,
 }
 
 /// An [Stow] that transforms the value of another [Stow].

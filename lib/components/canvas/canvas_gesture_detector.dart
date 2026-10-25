@@ -470,9 +470,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     final isStylus =
         event.kind == PointerDeviceKind.stylus ||
         event.kind == PointerDeviceKind.invertedStylus;
-    if (isStylus && event is PointerDownEvent) {
-      _detectStylusButton(event);
-    }
+    if (isStylus) _detectStylusButton(event);
 
     final double? pressure;
     if (isStylus) {
@@ -516,8 +514,10 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
   }
 
   void _detectStylusButton(PointerEvent event) {
+    // While touching the screen, the primary button is also pressed,
+    // so check the secondary (side) button bit instead of equality.
     final pressed =
-        event.buttons == kSecondaryButton || event.kind == .invertedStylus;
+        event.buttons & kSecondaryButton != 0 || event.kind == .invertedStylus;
     if (stylusButtonWasPressed != pressed) {
       stylusButtonWasPressed = pressed;
       widget.onStylusButtonChanged(pressed);

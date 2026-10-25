@@ -172,12 +172,21 @@ class EditorState extends State<Editor> {
   /// The last non-Eraser [currentTool] value.
   late Tool _lastNonEraserTool = Pen.currentPen;
 
-  /// If the stylus button is pressed, or was pressed, during the current draw gesture.
+  /// Whether the stylus side button is currently held down.
   ///
-  /// For now, this also includes when an [PointerDeviceKind.inverseStylus] is
-  /// used since the stylus rear-end and stylus button currently act the same.
-  /// If we add customized button bindings, we may have to separate this again.
-  var stylusButtonWasPressed = false;
+  /// This also includes when an [PointerDeviceKind.invertedStylus] is
+  /// used since the stylus rear-end and stylus button act the same.
+  var _stylusButtonHeld = false;
+
+  /// The tool to switch back to when the stylus button is released,
+  /// or null if the stylus button hasn't temporarily changed the tool.
+  ///
+  /// See [stows.stylusButtonAction].
+  Tool? _toolBeforeStylusButton;
+
+  /// Whether a draw gesture is currently in progress.
+  /// The tool is not changed by the stylus button in the middle of a stroke.
+  var _isDrawing = false;
 
   @override
   void initState() {
@@ -558,6 +567,7 @@ class EditorState extends State<Editor> {
     final page = coreInfo.pages[dragPageIndex!];
     final position = page.renderBox!.globalToLocal(details.focalPoint);
     history.canRedo = false;
+    _isDrawing = true;
 
     if (currentTool is Pen) {
       (currentTool as Pen).onDragStart(
@@ -665,9 +675,9 @@ class EditorState extends State<Editor> {
         );
       } else if (currentTool is Eraser) {
         final erased = (currentTool as Eraser).onDragEnd();
-        if (stylusButtonWasPressed || stows.disableEraserAfterUse.value) {
+        if (_toolBeforeStylusButton == null &&
+            stows.disableEraserAfterUse.value) {
           // restore previous tool
-          stylusButtonWasPressed = false;
           currentTool = _lastNonEraserTool;
         }
         if (erased.isEmpty) return;
@@ -718,6 +728,10 @@ class EditorState extends State<Editor> {
     });
 
     if (shouldSave) autosaveAfterDelay();
+
+    _isDrawing = false;
+    // apply any stylus button changes that happened during the stroke
+    _applyStylusButtonState();
   }
 
   void onInteractionEnd(ScaleEndDetails details) {
@@ -741,23 +755,60 @@ class EditorState extends State<Editor> {
     isHovering = false;
   }
 
+  /// Holding the stylus button temporarily switches to the tool
+  /// chosen in [stows.stylusButtonAction] (the eraser by default),
+  /// and releasing it switches back to the previous tool.
   void onStylusButtonChanged(bool buttonIsPressed) {
-    stylusButtonWasPressed |= buttonIsPressed;
+    _stylusButtonHeld = buttonIsPressed;
 
-    if (!isHovering) return;
-    if (buttonIsPressed) {
-      // button pressed while hovering, switch to Eraser
-      if (currentTool is! Eraser) {
-        currentTool = Eraser();
-      }
-    } else {
-      // button was released while hovering, switch back to non-Eraser
-      if (currentTool is Eraser) {
-        currentTool = _lastNonEraserTool;
-      }
+    // Don't change tools in the middle of a stroke,
+    // this is done in [onDrawEnd] instead.
+    if (_isDrawing) return;
+    _applyStylusButtonState();
+  }
+
+  void _applyStylusButtonState() {
+    final changed = _stylusButtonHeld
+        ? _startStylusButtonTool()
+        : _endStylusButtonTool();
+    if (changed && mounted) setState(() {});
+  }
+
+  /// Returns whether the tool was changed.
+  bool _startStylusButtonTool() {
+    if (_toolBeforeStylusButton != null) return false;
+
+    final Tool tool;
+    switch (stows.stylusButtonAction.value) {
+      case .eraser:
+        if (currentTool is Eraser) return false;
+        tool = Eraser();
+      case .select:
+        if (currentTool is Select) return false;
+        tool = Select.currentSelect;
+      case .none:
+        return false;
     }
 
-    if (mounted) setState(() {});
+    _toolBeforeStylusButton = currentTool;
+    currentTool = tool;
+    return true;
+  }
+
+  /// Returns whether the tool was changed.
+  bool _endStylusButtonTool() {
+    final previousTool = _toolBeforeStylusButton;
+    if (previousTool == null) return false;
+    _toolBeforeStylusButton = null;
+
+    if (currentTool case final Select select
+        when select.doneSelecting && !select.selectResult.isEmpty) {
+      // Stay in the select tool so the selection can be moved
+      return false;
+    }
+
+    currentTool = previousTool;
+    return true;
   }
 
   void onMoveImage(EditorImage image, Rect offset) {
@@ -1457,6 +1508,9 @@ class EditorState extends State<Editor> {
         child: Toolbar(
           readOnly: coreInfo.readOnly,
           setTool: (tool) {
+            // the user picked a tool, so don't restore the old one later
+            _toolBeforeStylusButton = null;
+
             if (tool is Eraser && currentTool is Eraser) {
               // setTool(Eraser) is a special case to toggle the eraser on/off
               tool = _lastNonEraserTool;

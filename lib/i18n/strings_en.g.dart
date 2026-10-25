@@ -137,6 +137,11 @@ class Translations$settings$en {
 	/// en: 'Auto'
 	String get systemLanguage => 'Auto';
 
+	List<String> get stylusButtonActions => [
+		'Eraser',
+		'Lasso',
+		'Nothing',
+	];
 	List<String> get axisDirections => [
 		'Top',
 		'Right',
@@ -696,6 +701,9 @@ class Translations$settings$prefLabels$en {
 
 	/// en: 'Auto-disable the eraser'
 	String get disableEraserAfterUse => 'Auto-disable the eraser';
+
+	/// en: 'Hold the stylus button for'
+	String get stylusButtonAction => 'Hold the stylus button for';
 
 	/// en: 'Hide the finger drawing toggle'
 	String get hideFingerDrawingToggle => 'Hide the finger drawing toggle';
