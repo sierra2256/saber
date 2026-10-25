@@ -24,6 +24,7 @@ import 'package:saber/data/nextcloud/saber_syncer.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/routes.dart';
 import 'package:saber/data/sentry/sentry_init.dart';
+import 'package:saber/data/todos/todo_indexer.dart';
 import 'package:saber/data/tools/stroke_properties.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
@@ -123,6 +124,7 @@ Future<void> appRunner(List<String> args) async {
   runApp(SentryWidget(child: TranslationProvider(child: const App())));
   startSyncAfterLoaded();
   unawaited(HandwritingIndexer.init());
+  unawaited(TodoIndexer.init());
   setupBackgroundSync();
 }
 

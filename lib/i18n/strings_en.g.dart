@@ -47,6 +47,7 @@ class Translations with BaseTranslations<AppLocale, Translations> {
 	late final Translations$update$en update = Translations$update$en.internal(_root);
 	late final Translations$editor$en editor = Translations$editor$en.internal(_root);
 	late final Translations$handwriting$en handwriting = Translations$handwriting$en.internal(_root);
+	late final Translations$todos$en todos = Translations$todos$en.internal(_root);
 }
 
 // Path: common
@@ -351,6 +352,21 @@ class Translations$handwriting$en {
 	late final Translations$handwriting$setup$en setup = Translations$handwriting$setup$en.internal(_root);
 	late final Translations$handwriting$convert$en convert = Translations$handwriting$convert$en.internal(_root);
 	late final Translations$handwriting$search$en search = Translations$handwriting$search$en.internal(_root);
+}
+
+// Path: todos
+class Translations$todos$en {
+	Translations$todos$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: '(one) {1 open to-do} (other) {$n open to-dos}'
+	String openCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(n,
+		one: '1 open to-do',
+		other: '${n} open to-dos',
+	);
 }
 
 // Path: home.tabs

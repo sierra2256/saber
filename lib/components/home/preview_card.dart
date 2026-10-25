@@ -6,6 +6,7 @@ import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/inner_canvas.dart';
 import 'package:saber/components/canvas/invert_widget.dart';
 import 'package:saber/components/home/sync_indicator.dart';
+import 'package:saber/components/home/todo_badge.dart';
 import 'package:saber/data/constants.dart';
 import 'package:saber/data/extensions/color_extensions.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
@@ -204,6 +205,11 @@ class _PreviewCardState extends State<PreviewCard> {
                     ),
                   ),
                   SyncIndicator(filePath: widget.filePath),
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: TodoBadge.note(widget.filePath),
+                  ),
                 ],
               ),
             ),

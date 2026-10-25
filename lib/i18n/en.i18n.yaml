@@ -439,3 +439,7 @@ handwriting:
     noResults: No results
     page: Page $page
     indexing: Indexing handwriting…
+todos:
+  openCount(plural, param=n):
+    one: 1 open to-do
+    other: $n open to-dos

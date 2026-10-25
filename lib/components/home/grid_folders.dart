@@ -4,6 +4,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:saber/components/home/delete_folder_button.dart';
 import 'package:saber/components/home/new_folder_dialog.dart';
 import 'package:saber/components/home/rename_folder_button.dart';
+import 'package:saber/components/home/todo_badge.dart';
 import 'package:saber/components/theming/adaptive_icon.dart';
 import 'package:saber/data/extensions/list_extensions.dart';
 import 'package:saber/i18n/strings.g.dart';
@@ -20,6 +21,7 @@ class GridFolders extends StatelessWidget {
     required this.deleteFolder,
     required this.doesFolderExist,
     required this.folders,
+    this.parentPath,
   });
 
   final bool isAtRoot;
@@ -33,6 +35,11 @@ class GridFolders extends StatelessWidget {
   final Future<void> Function(String) deleteFolder;
 
   final List<String> folders;
+
+  /// The path of the folder that contains [folders], e.g. `/maths`
+  /// (or `''` at the root). If given, folders show how many open to-dos
+  /// they contain.
+  final String? parentPath;
 
   @override
   Widget build(BuildContext context) {
@@ -62,6 +69,9 @@ class GridFolders extends StatelessWidget {
             isFolderEmpty: isFolderEmpty,
             deleteFolder: deleteFolder,
             onTap: onTap,
+            folderPath: parentPath != null && folderName != null
+                ? '$parentPath/$folderName'
+                : null,
           );
         },
       ),
@@ -79,6 +89,7 @@ class _GridFolder extends StatefulWidget {
     required this.isFolderEmpty,
     required this.deleteFolder,
     required this.onTap,
+    this.folderPath,
   }) : assert(
          (folderName == null) ^ (cardType == .realFolder),
          'Real folders must specify a folder name',
@@ -92,6 +103,9 @@ class _GridFolder extends StatefulWidget {
   final Future<bool> Function(String) isFolderEmpty;
   final Future<void> Function(String) deleteFolder;
   final Function(String) onTap;
+
+  /// The folder's path, to show its open to-dos.
+  final String? folderPath;
 
   @override
   State<_GridFolder> createState() => _GridFolderState();
@@ -166,6 +180,12 @@ class _GridFolderState extends State<_GridFolder> {
                           ),
                         ),
                       ),
+                      if (widget.folderPath != null)
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: TodoBadge.folder(widget.folderPath!),
+                        ),
                       if (widget.cardType == .realFolder)
                         Positioned.fill(
                           child: ValueListenableBuilder(
