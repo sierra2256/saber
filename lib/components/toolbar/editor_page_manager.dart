@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:saber/components/canvas/canvas_gesture_detector.dart';
 import 'package:saber/components/canvas/canvas_preview.dart';
 import 'package:saber/components/theming/adaptive_icon.dart';
@@ -63,6 +64,16 @@ class _EditorPageManagerState extends State<EditorPageManager> {
 
   /// Highlights the page that is currently on screen.
   void _onTransformChanged() {
+    // The transform can change while the editor is building,
+    // e.g. when scrolling to the initial page.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onTransformChanged();
+      });
+      return;
+    }
+
     final pageIndex = widget.getCurrentPageIndex();
     if (pageIndex == currentPageIndex) return;
     setState(() => currentPageIndex = pageIndex);

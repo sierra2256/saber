@@ -79,17 +79,26 @@ class _ElementPaste extends _LastPaste {
 }
 
 class Editor extends StatefulWidget {
-  new({super.key, String? path, this.customTitle, this.pdfPath})
-    : initialPath = path != null
-          ? Future.value(path)
-          : FileManager.newFilePath('/'),
-      needsNaming = path == null;
+  new({
+    super.key,
+    String? path,
+    this.customTitle,
+    this.pdfPath,
+    this.initialPageIndex,
+  }) : initialPath = path != null
+           ? Future.value(path)
+           : FileManager.newFilePath('/'),
+       needsNaming = path == null;
 
   final Future<String> initialPath;
   final bool needsNaming;
 
   final String? customTitle;
   final String? pdfPath;
+
+  /// The page to scroll to when the note is opened,
+  /// e.g. from a search result.
+  final int? initialPageIndex;
 
   /// The file extension used by the app.
   /// Files with this extension are
@@ -245,6 +254,12 @@ class EditorState extends State<Editor> {
 
   Future _loadCoreInfo(String filePath) async {
     coreInfo = await EditorCoreInfo.loadFromFilePath(filePath);
+    if (widget.initialPageIndex case final pageIndex?
+        when pageIndex < coreInfo.pages.length) {
+      coreInfo.initialPageIndex = pageIndex;
+      // don't restore the last scroll position instead
+      CanvasGestureDetector.forgetTransform(filePath);
+    }
     if (coreInfo.readOnly) {
       log.info('Loaded file as read-only: ${coreInfo.readOnlyReason}');
     }
@@ -2424,16 +2439,16 @@ class EditorState extends State<Editor> {
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
           onEnd: () => setState(() => _pageSidebarAnimating = false),
-          child: Offstage(
-            offstage: !showPageSidebar && !_pageSidebarAnimating,
-            child: pageManager(context),
-          ),
+          // Only build the sidebar (and its thumbnails) while it's visible
+          child: showPageSidebar || _pageSidebarAnimating
+              ? pageManager(context)
+              : const SizedBox.shrink(),
         ),
       ),
     );
   }
 
-  /// The sidebar is kept offstage when hidden, except while it's sliding out.
+  /// The sidebar isn't built when hidden, except while it's sliding out.
   var _pageSidebarAnimating = false;
 
   void _setPageSidebarShown(bool shown) => setState(() {
