@@ -3,6 +3,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/editor/todo.dart';
 import 'package:sbn/canvas_background_pattern.dart';
 import 'package:sbn/change.dart';
 
@@ -157,6 +158,7 @@ class EditorHistoryItem {
     required this.images,
     this.newStrokes,
     this.imageRectChanges,
+    this.todosChange,
     this.offset,
     this.page,
     this.quillChange,
@@ -193,6 +195,10 @@ class EditorHistoryItem {
        assert(
          type != .replaceStrokes || newStrokes != null,
          'newStrokes must be provided for replaceStrokes',
+       ),
+       assert(
+         type != .todos || todosChange != null,
+         'todosChange must be provided for todos',
        );
 
   final EditorHistoryItemType type;
@@ -207,6 +213,10 @@ class EditorHistoryItem {
   /// For [EditorHistoryItemType.replaceStrokes], any changes to the
   /// position and size of images, e.g. when a selection is resized.
   final Map<EditorImage, Change<Rect>>? imageRectChanges;
+
+  /// For [EditorHistoryItemType.todos], the page's to-dos
+  /// before and after the change.
+  final Change<List<TodoBox>>? todosChange;
   final Rect? offset;
   final EditorPage? page;
   final DocChange? quillChange;
@@ -220,6 +230,7 @@ class EditorHistoryItem {
     List<EditorImage>? images,
     List<Stroke>? newStrokes,
     Map<EditorImage, Change<Rect>>? imageRectChanges,
+    Change<List<TodoBox>>? todosChange,
     Rect? offset,
     EditorPage? page,
     DocChange? quillChange,
@@ -233,6 +244,7 @@ class EditorHistoryItem {
       images: images ?? this.images,
       newStrokes: newStrokes ?? this.newStrokes,
       imageRectChanges: imageRectChanges ?? this.imageRectChanges,
+      todosChange: todosChange ?? this.todosChange,
       offset: offset ?? this.offset,
       page: page ?? this.page,
       quillChange: quillChange ?? this.quillChange,
@@ -261,4 +273,8 @@ enum EditorHistoryItemType {
   /// Images may also have been resized, see
   /// [EditorHistoryItem.imageRectChanges].
   replaceStrokes,
+
+  /// To-dos were added, removed, closed or reopened on a page,
+  /// see [EditorHistoryItem.todosChange].
+  todos,
 }

@@ -34,6 +34,7 @@ import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/tools/tape.dart';
+import 'package:saber/data/tools/todo_tool.dart';
 import 'package:saber/i18n/strings.g.dart';
 
 class Toolbar extends StatefulWidget {
@@ -565,6 +566,12 @@ class _ToolbarState extends State<Toolbar> {
                           : null,
                     ),
                   ),
+                ],
+              ),
+              _ToolbarDivider(axis: toolbarAxis),
+              _ToolbarGroup(
+                axis: toolbarAxis,
+                children: [
                   ToolbarIconButton(
                     tooltip: t.editor.toolbar.text,
                     selected: widget.textEditing,
@@ -585,6 +592,17 @@ class _ToolbarState extends State<Toolbar> {
                       icon: Icons.photo,
                       cupertinoIcon: CupertinoIcons.photo,
                     ),
+                  ),
+                  ToolbarIconButton(
+                    tooltip: t.editor.pens.todo,
+                    selected: widget.currentTool == TodoTool.currentTodoTool,
+                    enabled: !widget.readOnly,
+                    onPressed: () {
+                      toolOptionsType.value = .hide;
+                      widget.setTool(TodoTool.currentTodoTool);
+                    },
+                    padding: buttonPadding,
+                    child: const Icon(TodoTool.todoIcon),
                   ),
                   if (widget.insertElement != null)
                     ValueListenableBuilder(

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/canvas_preview.dart';
 import 'package:saber/components/canvas/inner_canvas.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
+import 'package:saber/data/editor/todo.dart';
 import 'package:saber/data/is_this_a_test.dart';
 import 'package:screenshot/screenshot.dart';
 
@@ -87,13 +89,28 @@ abstract class EditorExporter {
                         InnerCanvas.defaultBackgroundColor.toARGB32(),
                   ).flatten();
 
-                  final strokes = page.strokes.where(
-                    (stroke) => !shouldRasterizeStroke(stroke),
+                  final strokes = page.strokes
+                      .where((stroke) => !shouldRasterizeStroke(stroke))
+                      .toList();
+                  // The labels of closed to-dos are greyed out.
+                  // (The screenshot has the to-do boxes.)
+                  final closedLabels = TodoBox.closedLabelStrokes(
+                    strokes,
+                    page.todos,
+                    pageSize.width,
                   );
                   for (final stroke in strokes) {
-                    final strokeColor = PdfColor.fromInt(
-                      stroke.color.toARGB32(),
-                    ).flatten(background: backgroundColor);
+                    var strokeColor = PdfColor.fromInt(stroke.color.toARGB32())
+                        .flatten(background: backgroundColor);
+                    if (closedLabels.contains(stroke)) {
+                      strokeColor = PdfColor.fromInt(
+                        Color.lerp(
+                          stroke.color,
+                          const Color(0xFFFFFFFF),
+                          0.6,
+                        )!.toARGB32(),
+                      ).flatten(background: backgroundColor);
+                    }
 
                     /// Whether we need to fill the shape, or draw its stroke
                     final bool shouldFillShape;
@@ -132,6 +149,22 @@ abstract class EditorExporter {
                       pdfGraphics.setLineWidth(stroke.options.size);
                       pdfGraphics.strokePath();
                     }
+                  }
+
+                  for (final todo in page.todos) {
+                    if (!todo.isClosed) continue;
+                    final strike = todo.strikeThrough(
+                      strokes,
+                      pageSize.width,
+                      page.todos,
+                    );
+                    if (strike == null) continue;
+                    pdfGraphics
+                      ..moveTo(strike.$1.dx, pageSize.height - strike.$1.dy)
+                      ..lineTo(strike.$2.dx, pageSize.height - strike.$2.dy)
+                      ..setStrokeColor(const PdfColor.fromInt(0xFFA0A0A0))
+                      ..setLineWidth(max(1.5, todo.rect.width / 12))
+                      ..strokePath();
                   }
                 },
                 child: pw.Image(

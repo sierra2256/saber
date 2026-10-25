@@ -1165,6 +1165,9 @@ class Translations$editor$pens$en {
 
 	/// en: 'Tape'
 	String get tape => 'Tape';
+
+	/// en: 'To-do (tap to place a box, tap a box to tick it)'
+	String get todo => 'To-do (tap to place a box, tap a box to tick it)';
 }
 
 // Path: editor.penOptions

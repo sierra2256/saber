@@ -9,6 +9,7 @@ import 'package:saber/components/canvas/_circle_stroke.dart';
 import 'package:saber/components/canvas/_rectangle_stroke.dart';
 import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/editor/todo.dart';
 import 'package:saber/data/extensions/color_extensions.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/highlighter.dart';
@@ -30,11 +31,12 @@ enum CanvasPainterLayer {
   /// text, so that it repaints with them (e.g. when fonts finish loading).
   highlighters,
 
-  /// All other strokes and tape.
+  /// All other strokes, to-do boxes and tape.
   ink,
 
   /// What changes while drawing: the current stroke, the detected shape,
-  /// laser strokes, the selection and the zoom writing box's target.
+  /// laser strokes, the selection, the zoom writing box's target
+  /// and the highlighted to-do.
   overlay;
 
   static const all = {highlighters, ink, overlay};
@@ -86,7 +88,11 @@ class CanvasPainter extends CustomPainter {
       _drawPageIndicator(canvas, size);
     }
     if (layers.contains(CanvasPainterLayer.ink)) {
-      _drawNonHighlighterStrokes(canvas);
+      final closedLabels = page.todos.isEmpty
+          ? const <Stroke>{}
+          : TodoBox.closedLabelStrokes(strokes, page.todos, size.width);
+      _drawNonHighlighterStrokes(canvas, closedLabels);
+      _drawTodos(canvas, size, closedLabels);
       _drawTapes(canvas);
     }
     if (layers.contains(CanvasPainterLayer.overlay)) {
@@ -95,6 +101,7 @@ class CanvasPainter extends CustomPainter {
       _drawDetectedShape(canvas);
       _drawSelection(canvas);
       _drawZoomBoxTarget(canvas);
+      _drawHighlightedTodo(canvas);
     }
   }
 
@@ -151,7 +158,7 @@ class CanvasPainter extends CustomPainter {
     if (needToRestoreCanvasLayer) canvas.restore();
   }
 
-  void _drawNonHighlighterStrokes(Canvas canvas) {
+  void _drawNonHighlighterStrokes(Canvas canvas, Set<Stroke> closedLabels) {
     late final paint = Paint();
 
     for (final stroke in strokes) {
@@ -159,6 +166,7 @@ class CanvasPainter extends CustomPainter {
       if (stroke.toolId == .tape) continue;
 
       var color = stroke.color.withInversion(invert);
+      if (closedLabels.contains(stroke)) color = _greyedOut(color);
       if (currentSelection?.strokes.contains(stroke) ?? false) {
         color = Color.lerp(color, primaryColor, 0.5)!;
       }
@@ -197,6 +205,96 @@ class CanvasPainter extends CustomPainter {
       } else {
         canvas.drawPath(_selectPath(stroke), paint);
       }
+    }
+  }
+
+  /// The color of the label of a closed to-do.
+  Color _greyedOut(Color color) =>
+      Color.lerp(color, invert ? Colors.black : Colors.white, 0.6)!;
+
+  static const _todoTickColor = Color(0xFF2E9E4F);
+
+  /// Draws the to-do boxes, ticks the closed ones
+  /// and strikes through their labels.
+  void _drawTodos(Canvas canvas, Size size, Set<Stroke> closedLabels) {
+    if (page.todos.isEmpty) return;
+    final boxColor = Colors.black.withInversion(invert);
+
+    for (final todo in page.todos) {
+      final rect = todo.rect;
+      final lineWidth = max(1.5, rect.width / 12);
+      final rrect = RRect.fromRectAndRadius(
+        rect,
+        Radius.circular(rect.width / 6),
+      );
+
+      if (todo.isClosed) {
+        canvas.drawRRect(
+          rrect,
+          Paint()..color = _todoTickColor.withValues(alpha: 0.15),
+        );
+      }
+      canvas.drawRRect(
+        rrect,
+        Paint()
+          ..color = todo.isClosed ? _greyedOut(boxColor) : boxColor
+          ..style = .stroke
+          ..strokeWidth = lineWidth,
+      );
+      if (!todo.isClosed) continue;
+
+      // tick
+      canvas.drawPath(
+        Path()
+          ..moveTo(rect.left + rect.width * 0.2, rect.top + rect.height * 0.52)
+          ..lineTo(rect.left + rect.width * 0.42, rect.top + rect.height * 0.75)
+          ..lineTo(
+            rect.left + rect.width * 0.82,
+            rect.top + rect.height * 0.25,
+          ),
+        Paint()
+          ..color = _todoTickColor
+          ..style = .stroke
+          ..strokeWidth = lineWidth * 1.8
+          ..strokeCap = .round
+          ..strokeJoin = .round,
+      );
+
+      // strike through the label
+      final strike = todo.strikeThrough(strokes, size.width, page.todos);
+      if (strike == null) continue;
+      canvas.drawLine(
+        strike.$1,
+        strike.$2,
+        Paint()
+          ..color = _greyedOut(boxColor)
+          ..strokeWidth = lineWidth
+          ..strokeCap = .round,
+      );
+    }
+  }
+
+  /// Draws a ring around [EditorPage.highlightedTodoId], e.g. after
+  /// opening the note from the to-do overview.
+  void _drawHighlightedTodo(Canvas canvas) {
+    final id = page.highlightedTodoId;
+    if (id == null) return;
+    for (final todo in page.todos) {
+      if (todo.id != id) continue;
+      final rect = todo.rect.inflate(todo.rect.width * 0.4);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, Radius.circular(rect.width / 4)),
+        Paint()
+          ..color = primaryColor.withValues(alpha: 0.25)
+          ..style = .fill,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, Radius.circular(rect.width / 4)),
+        Paint()
+          ..color = primaryColor
+          ..style = .stroke
+          ..strokeWidth = max(2, todo.rect.width / 10),
+      );
     }
   }
 
