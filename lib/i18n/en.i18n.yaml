@@ -418,6 +418,9 @@ editor:
   pages: Pages
   untitled: Untitled
   needsToSaveBeforeExiting: Saving your changes… You can safely exit the editor when it's done
+quickMemo:
+  title: Quick memo
+  done: Done
 handwriting:
   setup:
     title: Handwriting recognition

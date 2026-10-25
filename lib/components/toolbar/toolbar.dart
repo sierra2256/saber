@@ -40,6 +40,7 @@ class Toolbar extends StatefulWidget {
   const new({
     super.key,
     required this.readOnly,
+    this.restricted = false,
     required this.setTool,
     required this.currentTool,
     required this.setColor,
@@ -77,6 +78,10 @@ class Toolbar extends StatefulWidget {
   });
 
   final bool readOnly;
+
+  /// Hides anything that could reveal other notes or files,
+  /// e.g. for a quick memo on the lock screen.
+  final bool restricted;
 
   final ValueChanged<Tool> setTool;
   final Tool currentTool;
@@ -576,17 +581,18 @@ class _ToolbarState extends State<Toolbar> {
                       cupertinoIcon: CupertinoIcons.text_cursor,
                     ),
                   ),
-                  ToolbarIconButton(
-                    tooltip: t.editor.toolbar.photo,
-                    enabled: !widget.readOnly,
-                    onPressed: widget.pickPhoto,
-                    padding: buttonPadding,
-                    child: const AdaptiveIcon(
-                      icon: Icons.photo,
-                      cupertinoIcon: CupertinoIcons.photo,
+                  if (!widget.restricted)
+                    ToolbarIconButton(
+                      tooltip: t.editor.toolbar.photo,
+                      enabled: !widget.readOnly,
+                      onPressed: widget.pickPhoto,
+                      padding: buttonPadding,
+                      child: const AdaptiveIcon(
+                        icon: Icons.photo,
+                        cupertinoIcon: CupertinoIcons.photo,
+                      ),
                     ),
-                  ),
-                  if (widget.insertElement != null)
+                  if (widget.insertElement != null && !widget.restricted)
                     ValueListenableBuilder(
                       valueListenable: showElements,
                       builder: (context, showElements, child) =>
@@ -601,7 +607,7 @@ class _ToolbarState extends State<Toolbar> {
                           ),
                       child: const Icon(Icons.interests_outlined),
                     ),
-                  if (widget.pasteAgain != null)
+                  if (widget.pasteAgain != null && !widget.restricted)
                     ToolbarIconButton(
                       tooltip: t.editor.pasteAgain,
                       enabled: !widget.readOnly,
@@ -713,7 +719,7 @@ class _ToolbarState extends State<Toolbar> {
       valueListenable: stows.editorFingerDrawing,
       builder: (context, fingerDrawing, _) => MenuAnchor(
         menuChildren: [
-          if (widget.rename != null)
+          if (widget.rename != null && !widget.restricted)
             MenuItemButton(
               leadingIcon: const Icon(Icons.edit),
               onPressed: widget.readOnly ? null : widget.rename,
@@ -727,7 +733,7 @@ class _ToolbarState extends State<Toolbar> {
             onPressed: widget.readOnly ? null : widget.insertPage,
             child: Text(t.editor.menu.insertPage),
           ),
-          if (widget.openSplitView != null)
+          if (widget.openSplitView != null && !widget.restricted)
             MenuItemButton(
               leadingIcon: const Icon(Icons.vertical_split_outlined),
               onPressed: widget.openSplitView,
@@ -777,20 +783,22 @@ class _ToolbarState extends State<Toolbar> {
             onPressed: widget.readOnly ? null : toggleFullscreen,
             child: Text(t.editor.toolbar.fullscreen),
           ),
-          MenuItemButton(
-            leadingIcon: const AdaptiveIcon(
-              icon: Icons.share,
-              cupertinoIcon: CupertinoIcons.share,
+          if (!widget.restricted) ...[
+            MenuItemButton(
+              leadingIcon: const AdaptiveIcon(
+                icon: Icons.share,
+                cupertinoIcon: CupertinoIcons.share,
+              ),
+              onPressed: widget.readOnly ? null : toggleExportBar,
+              child: Text(t.editor.toolbar.export),
             ),
-            onPressed: widget.readOnly ? null : toggleExportBar,
-            child: Text(t.editor.toolbar.export),
-          ),
-          const Divider(height: 1),
-          MenuItemButton(
-            leadingIcon: const Icon(Icons.tune),
-            onPressed: widget.showNoteSettings,
-            child: Text(t.home.tabs.settings),
-          ),
+            const Divider(height: 1),
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.tune),
+              onPressed: widget.showNoteSettings,
+              child: Text(t.home.tabs.settings),
+            ),
+          ],
         ],
         builder: (context, controller, _) => ToolbarIconButton(
           tooltip: MaterialLocalizations.of(context).showMenuTooltip,

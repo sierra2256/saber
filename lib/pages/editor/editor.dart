@@ -89,6 +89,8 @@ class Editor extends StatefulWidget {
     this.customTitle,
     this.pdfPath,
     this.initialPageIndex,
+    this.quickMemo = false,
+    this.onQuickMemoDone,
   }) : initialPath = path != null
            ? Future.value(path)
            : FileManager.newFilePath('/'),
@@ -103,6 +105,14 @@ class Editor extends StatefulWidget {
   /// The page to scroll to when the note is opened,
   /// e.g. from a search result.
   final int? initialPageIndex;
+
+  /// Whether this is a quick memo (see [QuickMemoPage]), which can be shown
+  /// over the lock screen. Anything that could reveal other notes or files
+  /// (e.g. images, the clipboard, exporting, split view) is disabled.
+  final bool quickMemo;
+
+  /// Closes the quick memo, after it's been saved.
+  final Future<void> Function()? onQuickMemoDone;
 
   /// The file extension used by the app.
   /// Files with this extension are
@@ -1375,6 +1385,12 @@ class EditorState extends State<Editor> {
   /// If [photoInfos] is provided, it will be used instead of the file picker.
   ///
   /// The images are shifted by [offset], e.g. when pasting again.
+  /// Saves the quick memo and closes it, see [Editor.quickMemo].
+  Future<void> finishQuickMemo() async {
+    await flushSave();
+    await widget.onQuickMemoDone?.call();
+  }
+
   Future<int> _pickPhotos([
     List<_PhotoInfo>? photoInfos,
     Offset offset = .zero,
@@ -1543,6 +1559,9 @@ class EditorState extends State<Editor> {
   }
 
   Future paste() async {
+    // the clipboard could reveal private data on the lock screen
+    if (widget.quickMemo) return;
+
     /// Maps image formats to their file extension.
     const Map<SimpleFileFormat, String> formats = {
       Formats.jpeg: '.jpeg',
@@ -2125,6 +2144,7 @@ class EditorState extends State<Editor> {
             stows.editorFingerDrawing.value = !stows.editorFingerDrawing.value;
             lastSeenPointerCount = 0;
           },
+          restricted: widget.quickMemo,
           pickPhoto: _pickPhotos,
           paste: paste,
           pasteAgain: _lastPaste == null ? null : pasteAgain,
@@ -2141,7 +2161,16 @@ class EditorState extends State<Editor> {
           leading: Row(
             mainAxisSize: .min,
             children: [
-              SaveIndicator(savingState: savingState, triggerSave: saveToFile),
+              if (widget.quickMemo)
+                TextButton(
+                  onPressed: finishQuickMemo,
+                  child: Text(t.quickMemo.done),
+                )
+              else
+                SaveIndicator(
+                  savingState: savingState,
+                  triggerSave: saveToFile,
+                ),
               if (showTitleInToolbar)
                 SizedBox(
                   width: 180,
@@ -2293,6 +2322,11 @@ class EditorState extends State<Editor> {
         return PopScope(
           canPop: savingState == .saved,
           onPopInvokedWithResult: (didPop, _) {
+            if (widget.quickMemo && !didPop) {
+              // going back finishes the memo, after saving it
+              finishQuickMemo();
+              return;
+            }
             switch (savingState) {
               case .waitingToSave:
                 assert(!didPop);
