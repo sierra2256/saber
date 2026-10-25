@@ -31,7 +31,11 @@ class QuickColors extends StatelessWidget {
 
   static const count = 3;
 
-  static List<Color> get colors {
+  static List<Color> get colors => colorsUpTo(count);
+
+  /// Up to [count] colors: the pinned and recent colors,
+  /// then the presets.
+  static List<Color> colorsUpTo(int count) {
     final colors = <Color>[];
     void add(Color color) {
       color = color.withAlpha(255);

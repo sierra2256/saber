@@ -247,6 +247,14 @@ class Stows {
     codec: const EnumCodec(StylusButtonAction.values),
     volatile: !_isOnMainIsolate,
   );
+
+  /// Whether pressing the stylus side button twice opens the pen menu
+  /// (pen type, color and thickness) where the stylus is.
+  final stylusButtonDoublePress = PlainStow(
+    'stylusButtonDoublePress',
+    true,
+    volatile: !_isOnMainIsolate,
+  );
   final hideFingerDrawingToggle = PlainStow(
     'hideFingerDrawingToggle',
     false,

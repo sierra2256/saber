@@ -11,6 +11,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as flutter_quill;
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:keybinder/keybinder.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
@@ -34,6 +35,8 @@ import 'package:saber/components/toolbar/color_bar.dart';
 import 'package:saber/components/toolbar/editor_bottom_sheet.dart';
 import 'package:saber/components/toolbar/editor_page_manager.dart';
 import 'package:saber/components/toolbar/elements_bar.dart';
+import 'package:saber/components/toolbar/pen_radial_menu.dart';
+import 'package:saber/components/toolbar/quick_options.dart';
 import 'package:saber/components/toolbar/toolbar.dart';
 import 'package:saber/data/editor/canvas_element.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
@@ -64,6 +67,7 @@ import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/split_editor.dart';
 import 'package:saber/pages/home/whiteboard.dart';
 import 'package:sbn/change.dart';
+import 'package:sbn/tool_id.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
 typedef _PhotoInfo = ({Uint8List bytes, String extension});
@@ -663,6 +667,9 @@ class EditorState extends State<Editor> {
     final page = coreInfo.pages[dragPageIndex!];
     history.canRedo = false;
     _isDrawing = true;
+    // touching the screen between presses isn't a double press
+    _lastStylusButtonPress = null;
+    closePenMenu();
 
     if (currentTool is Pen) {
       (currentTool as Pen).onDragStart(
@@ -954,13 +961,157 @@ class EditorState extends State<Editor> {
   /// Holding the stylus button temporarily switches to the tool
   /// chosen in [stows.stylusButtonAction] (the eraser by default),
   /// and releasing it switches back to the previous tool.
-  void onStylusButtonChanged(bool buttonIsPressed) {
+  ///
+  /// Pressing the button twice quickly (while hovering) opens the pen menu
+  /// at [position] instead, see [stows.stylusButtonDoublePress].
+  void onStylusButtonChanged(
+    bool buttonIsPressed, [
+    Offset? position,
+    Duration? timeStamp,
+  ]) {
     _stylusButtonHeld = buttonIsPressed;
+
+    if (buttonIsPressed &&
+        !_isDrawing &&
+        _isStylusButtonDoublePress(timeStamp)) {
+      // a double press, so don't switch tools after all
+      _stylusButtonHeld = false;
+      _applyStylusButtonState();
+      togglePenMenu(position);
+      return;
+    }
 
     // Don't change tools in the middle of a stroke,
     // this is done in [onDrawEnd] instead.
     if (_isDrawing) return;
     _applyStylusButtonState();
+  }
+
+  /// Where the pen menu is open (in this editor's coordinates),
+  /// or null if it's closed. See [togglePenMenu].
+  Offset? penMenuPosition;
+
+  /// Opens the pen menu at [globalPosition]
+  /// (or the middle of the editor), or closes it if it's open.
+  void togglePenMenu([Offset? globalPosition]) {
+    if (!mounted) return;
+    setState(() {
+      if (penMenuPosition != null) {
+        penMenuPosition = null;
+        return;
+      }
+      final box = context.findRenderObject() as RenderBox?;
+      if (box == null) return;
+      penMenuPosition = globalPosition != null
+          ? box.globalToLocal(globalPosition)
+          : box.size.center(Offset.zero);
+    });
+  }
+
+  void closePenMenu() {
+    if (penMenuPosition == null) return;
+    setState(() => penMenuPosition = null);
+  }
+
+  Widget _buildPenMenu() {
+    final tool = currentTool;
+    final invert =
+        stows.editorAutoInvert.value && Theme.brightnessOf(context) == .dark;
+
+    PenMenuTool penTool(ToolId toolId, Object icon, String tooltip) =>
+        PenMenuTool(
+          icon: icon,
+          tooltip: tooltip,
+          selected: tool is Pen && tool.toolId == toolId,
+          onSelected: () => setTool(Pen.ofType(toolId)),
+        );
+
+    final List<double> sizes;
+    final double? currentSize;
+    final ValueChanged<double> onSizeSelected;
+    switch (tool) {
+      case final Pen pen:
+        sizes = WidthPresets.of(pen);
+        currentSize = pen.options.size;
+        onSizeSelected = (size) => setState(() => pen.options.size = size);
+      case Eraser():
+        sizes = Eraser.sizePresets;
+        currentSize = stows.eraserSize.value;
+        onSizeSelected = (size) =>
+            setState(() => stows.eraserSize.value = size);
+      default:
+        sizes = const [];
+        currentSize = null;
+        onSizeSelected = (_) {};
+    }
+
+    return PenRadialMenu(
+      center: penMenuPosition!,
+      tools: [
+        penTool(.fountainPen, Pen.fountainPenIcon, t.editor.pens.fountainPen),
+        penTool(
+          .ballpointPen,
+          Pen.ballpointPenIcon,
+          t.editor.pens.ballpointPen,
+        ),
+        penTool(.pencil, Pencil.pencilIcon, t.editor.pens.pencil),
+        penTool(
+          .highlighter,
+          Highlighter.highlighterIcon,
+          t.editor.pens.highlighter,
+        ),
+        penTool(.shapePen, ShapePen.shapePenIcon, t.editor.pens.shapePen),
+        PenMenuTool(
+          icon: FontAwesomeIcons.eraser,
+          tooltip: t.editor.penMenu.eraser,
+          selected: tool is Eraser,
+          onSelected: () {
+            if (tool is! Eraser) setTool(Eraser());
+          },
+        ),
+        PenMenuTool(
+          icon: CupertinoIcons.lasso,
+          tooltip: t.editor.toolbar.select,
+          selected: tool is Select,
+          onSelected: () => setTool(Select.currentSelect),
+        ),
+      ],
+      colors: QuickColors.colorsUpTo(7),
+      currentColor: tool is Pen ? tool.color : null,
+      onColorSelected: tool is Pen || tool is Select ? setColor : null,
+      sizes: sizes,
+      currentSize: currentSize,
+      onSizeSelected: onSizeSelected,
+      invert: invert,
+      onClose: closePenMenu,
+    );
+  }
+
+  /// When the stylus button was last pressed, see
+  /// [_isStylusButtonDoublePress].
+  Duration? _lastStylusButtonPress;
+
+  /// A stopwatch for when the stylus button is pressed without a timestamp
+  /// (e.g. in tests).
+  final _stylusButtonStopwatch = Stopwatch()..start();
+
+  /// The longest time between two presses of the stylus button
+  /// for them to count as a double press.
+  static const stylusButtonDoublePressTimeout = Duration(milliseconds: 400);
+
+  /// Records a press of the stylus button,
+  /// and returns whether it was the second press of a double press.
+  bool _isStylusButtonDoublePress(Duration? timeStamp) {
+    if (!stows.stylusButtonDoublePress.value) return false;
+    final now = timeStamp ?? _stylusButtonStopwatch.elapsed;
+    final last = _lastStylusButtonPress;
+    final isDoublePress =
+        last != null &&
+        now >= last &&
+        now - last <= stylusButtonDoublePressTimeout;
+    // a third press starts a new double press
+    _lastStylusButtonPress = isDoublePress ? null : now;
+    return isDoublePress;
   }
 
   void _applyStylusButtonState() {
@@ -1005,6 +1156,74 @@ class EditorState extends State<Editor> {
 
     currentTool = previousTool;
     return true;
+  }
+
+  /// Switches to [tool], e.g. from the toolbar or the pen menu.
+  ///
+  /// Picking the eraser while the eraser is selected
+  /// switches back to the previous tool.
+  void setTool(Tool tool) {
+    // the user picked a tool, so don't restore the old one later
+    _toolBeforeStylusButton = null;
+
+    if (tool is Eraser && currentTool is Eraser) {
+      // setTool(Eraser) is a special case to toggle the eraser on/off
+      tool = _lastNonEraserTool;
+    }
+
+    currentTool = tool;
+
+    if (tool is Highlighter) {
+      Highlighter.currentHighlighter = tool;
+    } else if (tool is Tape) {
+      Tape.currentTape = tool;
+    } else if (tool is Pencil) {
+      Pencil.currentPencil = tool;
+    } else if (tool is Pen) {
+      Pen.currentPen = tool;
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  /// Changes the color of the current pen,
+  /// or of the selected strokes if the select tool is active.
+  void setColor(Color color) {
+    setState(() {
+      updateColorBar(color);
+
+      if (currentTool is Highlighter) {
+        (currentTool as Highlighter).color = color.withAlpha(Highlighter.alpha);
+      } else if (currentTool is Pen) {
+        (currentTool as Pen).color = color;
+      } else if (currentTool is Select) {
+        // Changes color of selected strokes
+        final select = currentTool as Select;
+        if (select.isDoneSelectingFor(this)) {
+          final strokes = select.selectResult.strokes;
+
+          final colorChange = <Stroke, Change<Color>>{};
+          for (final stroke in strokes) {
+            colorChange[stroke] = Change(
+              previous: stroke.color,
+              current: color,
+            );
+            stroke.color = color;
+          }
+
+          history.recordChange(
+            EditorHistoryItem(
+              type: .changeColor,
+              pageIndex: strokes.first.pageIndex,
+              strokes: strokes,
+              colorChange: colorChange,
+              images: [],
+            ),
+          );
+          autosaveAfterDelay();
+        }
+      }
+    });
   }
 
   void onMoveImage(EditorImage image, Rect offset) {
@@ -2028,29 +2247,7 @@ class EditorState extends State<Editor> {
         bottom: stows.editorToolbarAlignment.value != AxisDirection.up,
         child: Toolbar(
           readOnly: coreInfo.readOnly,
-          setTool: (tool) {
-            // the user picked a tool, so don't restore the old one later
-            _toolBeforeStylusButton = null;
-
-            if (tool is Eraser && currentTool is Eraser) {
-              // setTool(Eraser) is a special case to toggle the eraser on/off
-              tool = _lastNonEraserTool;
-            }
-
-            currentTool = tool;
-
-            if (tool is Highlighter) {
-              Highlighter.currentHighlighter = tool;
-            } else if (tool is Tape) {
-              Tape.currentTape = tool;
-            } else if (tool is Pencil) {
-              Pencil.currentPencil = tool;
-            } else if (tool is Pen) {
-              Pen.currentPen = tool;
-            }
-
-            if (mounted) setState(() {});
-          },
+          setTool: setTool,
           currentTool: currentTool,
           duplicateSelection: () {
             final select = currentTool as Select;
@@ -2124,45 +2321,7 @@ class EditorState extends State<Editor> {
               autosaveAfterDelay();
             });
           },
-          setColor: (color) {
-            setState(() {
-              updateColorBar(color);
-
-              if (currentTool is Highlighter) {
-                (currentTool as Highlighter).color = color.withAlpha(
-                  Highlighter.alpha,
-                );
-              } else if (currentTool is Pen) {
-                (currentTool as Pen).color = color;
-              } else if (currentTool is Select) {
-                // Changes color of selected strokes
-                final select = currentTool as Select;
-                if (select.isDoneSelectingFor(this)) {
-                  final strokes = select.selectResult.strokes;
-
-                  final colorChange = <Stroke, Change<Color>>{};
-                  for (final stroke in strokes) {
-                    colorChange[stroke] = Change(
-                      previous: stroke.color,
-                      current: color,
-                    );
-                    stroke.color = color;
-                  }
-
-                  history.recordChange(
-                    EditorHistoryItem(
-                      type: .changeColor,
-                      pageIndex: strokes.first.pageIndex,
-                      strokes: strokes,
-                      colorChange: colorChange,
-                      images: [],
-                    ),
-                  );
-                  autosaveAfterDelay();
-                }
-              }
-            });
-          },
+          setColor: setColor,
           quillFocus: quillFocus,
           textEditing: currentTool == Tool.textEditing,
           toggleTextEditing: () => setState(() {
@@ -2354,6 +2513,8 @@ class EditorState extends State<Editor> {
                   ),
                 },
               ),
+              if (penMenuPosition != null)
+                Positioned.fill(child: _buildPenMenu()),
             ],
           ),
         ),

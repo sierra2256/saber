@@ -325,6 +325,7 @@ class Translations$editor$en {
 	String get pasteAgain => 'Paste again';
 
 	late final Translations$editor$splitView$en splitView = Translations$editor$splitView$en.internal(_root);
+	late final Translations$editor$penMenu$en penMenu = Translations$editor$penMenu$en.internal(_root);
 	late final Translations$editor$zoomBox$en zoomBox = Translations$editor$zoomBox$en.internal(_root);
 	late final Translations$editor$menu$en menu = Translations$editor$menu$en.internal(_root);
 	late final Translations$editor$readOnlyBanner$en readOnlyBanner = Translations$editor$readOnlyBanner$en.internal(_root);
@@ -747,6 +748,9 @@ class Translations$settings$prefLabels$en {
 	/// en: 'Hold the stylus button for'
 	String get stylusButtonAction => 'Hold the stylus button for';
 
+	/// en: 'Press the stylus button twice for the pen menu'
+	String get stylusButtonDoublePress => 'Press the stylus button twice for the pen menu';
+
 	/// en: 'Handwriting recognition'
 	String get handwritingRecognition => 'Handwriting recognition';
 
@@ -815,6 +819,9 @@ class Translations$settings$prefDescriptions$en {
 
 	/// en: 'Search and convert handwriting, on this device only'
 	String get handwritingRecognition => 'Search and convert handwriting, on this device only';
+
+	/// en: 'Pick the pen, color and thickness where the stylus is'
+	String get stylusButtonDoublePress => 'Pick the pen, color and thickness where the stylus is';
 
 	/// en: 'Larger images will be compressed'
 	String get maxImageSize => 'Larger images will be compressed';
@@ -1425,6 +1432,21 @@ class Translations$editor$splitView$en {
 
 	/// en: 'Copied to the other side'
 	String get copied => 'Copied to the other side';
+}
+
+// Path: editor.penMenu
+class Translations$editor$penMenu$en {
+	Translations$editor$penMenu$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Pen menu'
+	String get title => 'Pen menu';
+
+	/// en: 'Eraser'
+	String get eraser => 'Eraser';
 }
 
 // Path: editor.zoomBox
