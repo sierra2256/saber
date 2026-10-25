@@ -16,9 +16,14 @@ abstract class RoutePaths {
 
   /// The route to open the note at [filePath],
   /// optionally scrolled to [pageIndex].
-  static String editFilePath(String filePath, {int? pageIndex}) {
+  static String editFilePath(
+    String filePath, {
+    int? pageIndex,
+    int? highlightTodo,
+  }) {
     return '$edit?path=${Uri.encodeQueryComponent(filePath)}'
-        '${pageIndex != null ? '&page=$pageIndex' : ''}';
+        '${pageIndex != null ? '&page=$pageIndex' : ''}'
+        '${highlightTodo != null ? '&todo=$highlightTodo' : ''}';
   }
 
   static String editImportPdf(String filePath, String pdfPath) {

@@ -259,6 +259,7 @@ class const App({super.key}) extends StatefulWidget {
           initialPageIndex: int.tryParse(
             state.uri.queryParameters['page'] ?? '',
           ),
+          highlightTodo: int.tryParse(state.uri.queryParameters['todo'] ?? ''),
         ),
       ),
       GoRoute(

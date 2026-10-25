@@ -92,6 +92,7 @@ class Editor extends StatefulWidget {
     this.customTitle,
     this.pdfPath,
     this.initialPageIndex,
+    this.highlightTodo,
   }) : initialPath = path != null
            ? Future.value(path)
            : FileManager.newFilePath('/'),
@@ -106,6 +107,10 @@ class Editor extends StatefulWidget {
   /// The page to scroll to when the note is opened,
   /// e.g. from a search result.
   final int? initialPageIndex;
+
+  /// The id of a to-do box on [initialPageIndex] to highlight briefly,
+  /// e.g. when it was opened from the to-do overview.
+  final int? highlightTodo;
 
   /// The file extension used by the app.
   /// Files with this extension are
@@ -268,6 +273,15 @@ class EditorState extends State<Editor> {
       coreInfo.initialPageIndex = pageIndex;
       // don't restore the last scroll position instead
       CanvasGestureDetector.forgetTransform(filePath);
+
+      if (widget.highlightTodo case final id?) {
+        final page = coreInfo.pages[pageIndex];
+        page.highlightedTodoId = id;
+        _highlightTodoTimer = Timer(highlightTodoDuration, () {
+          page.highlightedTodoId = null;
+          page.redrawCurrentStroke();
+        });
+      }
     }
     if (coreInfo.readOnly) {
       log.info('Loaded file as read-only: ${coreInfo.readOnlyReason}');
@@ -670,6 +684,10 @@ class EditorState extends State<Editor> {
     }
     return null;
   }
+
+  /// How long [Editor.highlightTodo] is highlighted for.
+  static const highlightTodoDuration = Duration(seconds: 4);
+  Timer? _highlightTodoTimer;
 
   /// Whether the current gesture was only accepted because it started
   /// on a to-do box, e.g. a finger when finger drawing is off.
@@ -2961,6 +2979,7 @@ class EditorState extends State<Editor> {
     _delayedSaveTimer?.cancel();
     _watchServerTimer?.cancel();
     _lastSeenPointerCountTimer?.cancel();
+    _highlightTodoTimer?.cancel();
 
     _removeKeybindings();
 

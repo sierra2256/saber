@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_quill/quill_delta.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/handwriting/handwriting_index.dart';
@@ -27,6 +30,7 @@ class TodoIndexer {
     this._fileOperations,
     Future<List<String>> Function()? getAllNotes,
     bool Function()? recognitionEnabled,
+    this.labelImagesDir,
     this.debounce = const Duration(seconds: 2),
   }) : _loadNote = loadNote ?? EditorCoreInfo.loadFromFilePath,
        _stampOf = stampOf ?? fileStampOf,
@@ -47,6 +51,7 @@ class TodoIndexer {
     final supportDir = await getApplicationSupportDirectory();
     final indexer = instance = TodoIndexer(
       index: TodoIndex(file: File(p.join(supportDir.path, 'todo_index.json'))),
+      labelImagesDir: Directory(p.join(supportDir.path, 'todo_labels')),
     );
 
     // Recognize (or forget) the labels' handwriting
@@ -66,6 +71,10 @@ class TodoIndexer {
   final Stream<FileOperation>? _fileOperations;
   final Future<List<String>> Function() _getAllNotes;
   final bool Function() _recognitionEnabled;
+
+  /// Where pictures of the labels' handwriting are kept, see [labelImageOf].
+  /// If null, no pictures are made.
+  final Directory? labelImagesDir;
 
   /// How long to wait after a note changes before indexing it,
   /// so a note isn't indexed many times while it's being saved.
@@ -109,6 +118,92 @@ class TodoIndexer {
       if (!existing.contains(filePath)) index.remove(filePath);
     }
     notes.forEach(enqueue);
+    unawaited(idle.then((_) => _deleteUnusedLabelImages()));
+  }
+
+  /// The picture of [todo]'s handwritten label, shown in the to-do
+  /// overview when its handwriting isn't recognized.
+  /// Null if there is no label, or no picture of it.
+  File? labelImageOf(String filePath, IndexedTodo todo) {
+    final dir = labelImagesDir;
+    if (dir == null || todo.kind != .drawn || todo.labelSignature == 0) {
+      return null;
+    }
+    final file = File(p.join(dir.path, _labelImageName(filePath, todo)));
+    return file.existsSync() ? file : null;
+  }
+
+  /// The file name of the picture of [todo]'s label. It changes when
+  /// the label changes, since it includes [IndexedTodo.labelSignature].
+  static String _labelImageName(String filePath, IndexedTodo todo) =>
+      '${_hashOf(filePath)}_${todo.pageIndex}_${todo.id}_'
+      '${todo.labelSignature}.png';
+
+  /// A hash of [text] that is the same across app restarts (FNV-1a).
+  static String _hashOf(String text) {
+    var hash = 0x811c9dc5;
+    for (final unit in text.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    return hash.toRadixString(16);
+  }
+
+  /// Deletes pictures of labels that changed or were removed.
+  Future<void> _deleteUnusedLabelImages() async {
+    final dir = labelImagesDir;
+    if (dir == null || !dir.existsSync() || !_started) return;
+    final used = <String>{
+      for (final MapEntry(key: filePath, value: note) in index.notes.entries)
+        for (final todo in note.todos)
+          if (todo.kind == .drawn && todo.labelSignature != 0)
+            _labelImageName(filePath, todo),
+    };
+    try {
+      for (final file in dir.listSync().whereType<File>()) {
+        if (!used.contains(p.basename(file.path))) file.deleteSync();
+      }
+    } catch (e) {
+      log.warning('Failed to delete unused to-do label pictures: $e');
+    }
+  }
+
+  /// Draws [strokes] as a picture [height] pixels high.
+  @visibleForTesting
+  static Future<Uint8List?> renderLabel(
+    List<Stroke> strokes, {
+    double height = 48,
+  }) async {
+    if (strokes.isEmpty) return null;
+    var bounds = strokes.first.highQualityPath.getBounds();
+    for (final stroke in strokes.skip(1)) {
+      bounds = bounds.expandToInclude(stroke.highQualityPath.getBounds());
+    }
+    bounds = bounds.inflate(4);
+    final scale = (height / bounds.height).clamp(0.1, 2.0);
+    final width = (bounds.width * scale).clamp(1.0, 800.0);
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)
+      ..scale(scale)
+      ..translate(-bounds.left, -bounds.top);
+    for (final stroke in strokes) {
+      canvas.drawPath(
+        stroke.highQualityPath,
+        Paint()..color = stroke.color.withValues(alpha: 1),
+      );
+    }
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(
+      width.ceil(),
+      (bounds.height * scale).ceil(),
+    );
+    picture.dispose();
+    try {
+      final bytes = await image.toByteData(format: .png);
+      return bytes?.buffer.asUint8List();
+    } finally {
+      image.dispose();
+    }
   }
 
   Future<void> stop() async {
@@ -208,7 +303,11 @@ class TodoIndexer {
     }
 
     try {
-      final todos = await todosOf(coreInfo, previous: old?.todos);
+      final todos = await todosOf(
+        coreInfo,
+        previous: old?.todos,
+        filePath: filePath,
+      );
       if (!_started) return;
       // (notes without to-dos are kept too, so they aren't loaded again)
       index.setNote(filePath, IndexedNoteTodos(stamp: stamp, todos: todos));
@@ -226,6 +325,7 @@ class TodoIndexer {
   Future<List<IndexedTodo>> todosOf(
     EditorCoreInfo coreInfo, {
     List<IndexedTodo>? previous,
+    String? filePath,
   }) async {
     final recognize =
         _recognitionEnabled() &&
@@ -256,18 +356,20 @@ class TodoIndexer {
               await recognizer.recognize(labelStrokes);
           if (label.isEmpty) label = null;
         }
-        todos.add(
-          IndexedTodo(
-            kind: .drawn,
-            id: todo.id,
-            pageIndex: pageIndex,
-            top: todo.rect.top,
-            closed: todo.isClosed,
-            closedAt: todo.closedAt,
-            label: label?.replaceAll('\n', ' '),
-            labelSignature: signature,
-          ),
+        final indexed = IndexedTodo(
+          kind: .drawn,
+          id: todo.id,
+          pageIndex: pageIndex,
+          top: todo.rect.top,
+          closed: todo.isClosed,
+          closedAt: todo.closedAt,
+          label: label?.replaceAll('\n', ' '),
+          labelSignature: signature,
         );
+        todos.add(indexed);
+        if (label == null && filePath != null) {
+          await _saveLabelImage(filePath, indexed, labelStrokes);
+        }
       }
 
       todos.addAll(
@@ -275,6 +377,25 @@ class TodoIndexer {
       );
     }
     return todos;
+  }
+
+  Future<void> _saveLabelImage(
+    String filePath,
+    IndexedTodo todo,
+    List<Stroke> labelStrokes,
+  ) async {
+    final dir = labelImagesDir;
+    if (dir == null || labelStrokes.isEmpty) return;
+    if (labelImageOf(filePath, todo) != null) return; // already saved
+    try {
+      final bytes = await renderLabel(labelStrokes);
+      if (bytes == null) return;
+      await dir.create(recursive: true);
+      await File(p.join(dir.path, _labelImageName(filePath, todo)))
+          .writeAsBytes(bytes);
+    } catch (e) {
+      log.warning('Failed to save a picture of a to-do label: $e');
+    }
   }
 
   /// The checklist items in [delta], the typed text of page [pageIndex].
