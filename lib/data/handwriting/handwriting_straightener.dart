@@ -9,11 +9,11 @@ import 'package:saber/data/handwriting/handwriting_recognizer.dart';
 
 /// Makes handwriting look neater while keeping it handwritten,
 /// like "Straighten" in Samsung Notes:
-/// - slanted lines are rotated to be level,
-/// - the words in each line are moved onto a common center line,
-/// - words that are much bigger or smaller than the rest are resized
-///   towards the typical size, and
-/// - the gaps between words are evened out.
+/// - slanted lines are rotated to be level, and
+/// - the words in each line are moved up or down onto a common baseline.
+///
+/// Nothing else changes: letters keep their shapes and sizes,
+/// and words keep their horizontal positions and spacing.
 abstract final class HandwritingStraightener {
   /// Lines that slope more than this (in radians) are probably
   /// meant to be diagonal, so they aren't leveled.
@@ -26,12 +26,9 @@ abstract final class HandwritingStraightener {
   /// separates two words.
   static const wordGap = 0.75;
 
-  /// Gaps wider than this many target gaps are kept as they are,
-  /// since they're probably intentional, e.g. between columns.
-  static const maxGapToEven = 3.0;
-
-  /// Words are resized by at most this factor (or its inverse).
-  static const maxResize = 1.4;
+  /// Words aren't moved by less than this many pixels,
+  /// since handwriting is never perfectly aligned anyway.
+  static const minMove = 0.5;
 
   /// Straightens the handwriting in [strokes].
   /// Other strokes (e.g. shapes and highlighter) are ignored.
@@ -45,115 +42,207 @@ abstract final class HandwritingStraightener {
       ))
         _Line(line),
     ];
-    if (lines.isEmpty) return const {};
-
-    for (final line in lines) {
-      line.level();
-    }
-
-    final targetHeight = _median([
-      for (final line in lines)
-        for (final word in line.words)
-          if (word.canResizeIn(line)) word.bodyHeight,
-    ]);
-    final targetGap = _median(lines.expand((line) => line.gaps).toList());
 
     final changed = <Stroke, Stroke>{};
     for (final line in lines) {
-      if (targetHeight != null) line.resizeWords(targetHeight);
+      line.level();
       line.alignWords();
-      if (targetGap != null) line.spaceWords(targetGap);
       changed.addAll(line.transformedStrokes());
     }
     return changed;
   }
 
-  /// Strokes in the same line overlap vertically by at least this
+  /// Strokes in the same word overlap vertically by at least this
   /// fraction of the shorter of the two heights.
-  static const minOverlap = 0.4;
+  static const minWordOverlap = 0.5;
 
-  /// Strokes further right than this many typical stroke heights
-  /// from the end of a line start a new line, e.g. in another column.
+  /// A word's baseline can be this many typical heights away from where
+  /// its line is expected to continue: handwriting bobs up and down,
+  /// but the next line is further away than this.
+  static const lineBand = 0.7;
+
+  /// Words further right than this many typical heights from the end
+  /// of a line start a new line, e.g. in another column.
   static const maxLineGap = 3.0;
+
+  /// Strokes shorter than this many typical heights are dots, dashes
+  /// and accents, which follow the line they're on or above
+  /// rather than having a baseline of their own.
+  static const dotHeight = 0.4;
 
   /// Groups [strokes] into lines of text.
   ///
-  /// Unlike [HandwritingLines.group], this follows each line from left
-  /// to right, so lines that slope a lot are still found as one line.
+  /// Strokes that are close together make a word, and words whose
+  /// baselines line up make a line. Unlike [HandwritingLines.group],
+  /// this follows the slope of each line, so lines that slope a lot
+  /// are still found as one line.
   @visibleForTesting
   static List<List<Stroke>> groupLines(List<Stroke> strokes) {
     if (strokes.isEmpty) return const [];
-    final bounds = {
-      for (final stroke in strokes) stroke: stroke.lowQualityPath.getBounds(),
-    };
-    final height = _median([for (final b in bounds.values) b.height])!;
+    final infos = [for (final stroke in strokes) _StrokeInfo(stroke)]
+      ..sort((a, b) => a.bounds.left.compareTo(b.bounds.left));
+    final height = _typicalHeight(infos);
 
-    final lines = <_LineGroup>[];
-    for (final stroke in strokes.sorted(
-      (a, b) => bounds[a]!.left.compareTo(bounds[b]!.left),
-    )) {
-      final b = bounds[stroke]!;
-      _LineGroup? best;
-      var bestOverlap = minOverlap;
-      for (final line in lines) {
-        if (b.left - line.right > maxLineGap * height) continue;
-        // compare with the end of the line, which may have drifted
-        // up or down from its start if the line slopes
-        final center = line.tailCenter;
+    // Strokes that are close together and overlap vertically make a word
+    // (or a letter, in print handwriting). Words are compact, so it
+    // doesn't matter here if the line slopes.
+    final words = <_WordGroup>[];
+    for (final info in infos) {
+      final b = info.bounds;
+      _WordGroup? best;
+      var bestOverlap = minWordOverlap;
+      for (final word in words) {
+        if (b.left - word.bounds.right > wordGap * height) continue;
         final overlap =
-            min(center + height / 2, b.bottom) -
-            max(center - height / 2, b.top);
-        if (overlap <= 0) continue;
-        final shorter = min(height, b.height);
-        final fraction = shorter <= 0 ? 1.0 : overlap / shorter;
+            min(word.bounds.bottom, b.bottom) - max(word.bounds.top, b.top);
+        final shorter = max(1.0, min(word.bounds.height, b.height));
+        final fraction = overlap / shorter;
         if (fraction >= bestOverlap) {
-          best = line;
+          best = word;
           bestOverlap = fraction;
         }
       }
       if (best != null) {
-        best.add(stroke, b);
+        best.add(info);
       } else {
-        lines.add(_LineGroup(stroke, b));
+        words.add(_WordGroup(info));
       }
     }
 
-    // Small "lines" are usually dots and accents above or below a line
-    // (e.g. on an "i"), so they move along with the nearest line.
-    final lineHeight = _median([for (final l in lines) l.bounds.height])!;
-    final small = [
-      for (final line in lines)
-        if (line.bounds.height < lineHeight / 2) line,
-    ];
-    for (final line in small) {
-      final nearest = lines
-          .where(
-            (other) =>
-                !small.contains(other) &&
-                other.bounds.left <= line.bounds.right &&
-                other.bounds.right >= line.bounds.left,
-          )
-          .map(
-            (other) => (
-              line: other,
-              distance: (other.bounds.center.dy - line.bounds.center.dy).abs(),
-            ),
-          )
-          .where((other) => other.distance < lineHeight)
-          .sorted((a, b) => a.distance.compareTo(b.distance))
-          .firstOrNull;
-      if (nearest == null) continue;
-      nearest.line.strokes.addAll(line.strokes);
-      lines.remove(line);
+    // A word continues the line whose baseline it's closest to,
+    // following the slope of the line so far.
+    final lines = <_LineGroup>[];
+    final dots = <_WordGroup>[];
+    for (final word in words) {
+      if (word.bounds.height < dotHeight * height) {
+        dots.add(word);
+        continue;
+      }
+      final x = word.bounds.center.dx;
+      final baseline = _baselineOf(word.points, height);
+      _LineGroup? best;
+      var bestScore = 1.0;
+      for (final line in lines) {
+        if (word.bounds.left - line.right > maxLineGap * height) continue;
+        final (:expected, :tolerance) = line.expectAt(x, height);
+        final score = (baseline - expected).abs() / tolerance;
+        if (score <= bestScore) {
+          best = line;
+          bestScore = score;
+        }
+      }
+      if (best != null) {
+        best.add(word, x, baseline);
+      } else {
+        lines.add(_LineGroup(word, x, baseline));
+      }
     }
 
-    return [for (final line in lines) line.strokes];
+    // Dots, dashes and accents go with the line they're on or above,
+    // e.g. the dot of an "i" or a period.
+    final unplaced = <_WordGroup>[];
+    for (final dot in dots) {
+      final x = dot.bounds.center.dx;
+      final y = dot.bounds.center.dy;
+      _LineGroup? best;
+      var bestDistance = height;
+      for (final line in lines) {
+        if (x < line.left - height || x > line.right + height) continue;
+        final baseline = line.expectAt(x, height).expected;
+        // from the top of the ascenders to just below the baseline
+        final distance = max(
+          0.0,
+          max(baseline - 2 * height - y, y - baseline - dotHeight * height),
+        );
+        if (distance < bestDistance) {
+          best = line;
+          bestDistance = distance;
+        }
+      }
+      if (best != null) {
+        best.words.add(dot);
+      } else {
+        unplaced.add(dot);
+      }
+    }
+
+    return [
+      for (final line in lines)
+        [
+          for (final word in line.words)
+            for (final info in word.strokes) info.stroke,
+        ],
+      for (final dot in unplaced) [for (final info in dot.strokes) info.stroke],
+    ];
   }
 
-  static double? _median(List<double> values) {
-    if (values.isEmpty) return null;
-    values.sort();
-    return values[values.length ~/ 2];
+  /// The typical height of the letters in [strokes] (roughly the
+  /// x-height), from the height of each stroke's main body of ink,
+  /// so a cursive word with ascenders counts about the same as an "o".
+  static double _typicalHeight(List<_StrokeInfo> strokes) {
+    final heights = [
+      for (final info in strokes)
+        if (_quantileY(info.points, 0.8) - _quantileY(info.points, 0.2)
+            case final body when body >= 1)
+          body * 1.5,
+    ];
+    if (heights.isNotEmpty) return _midMedian(heights);
+    return max(1, _midMedian([for (final info in strokes) info.bounds.height]));
+  }
+
+  /// Where the ink in [points] sits on its line.
+  ///
+  /// Most of a word's ink is in its x-height band (the part between the
+  /// baseline and the top of letters like "o"), so this is the bottom
+  /// of the densest band of ink [height] tall. Unlike the ink's center,
+  /// it isn't pulled up by ascenders ("l") or down by descenders ("p").
+  static double _baselineOf(List<_WeightedPoint> points, double height) {
+    final sorted = points.sorted((a, b) => a.y.compareTo(b.y));
+    // the ink in the band of [height] ending at each point
+    final bands = <({double bottom, double ink})>[];
+    var top = 0;
+    var ink = 0.0;
+    for (final point in sorted) {
+      ink += point.weight;
+      while (sorted[top].y < point.y - height) {
+        ink -= sorted[top].weight;
+        top++;
+      }
+      bands.add((bottom: point.y, ink: ink));
+    }
+    final mostInk = bands.map((b) => b.ink).max;
+    // Prefer the lowest of the dense bands: for a word whose ink is
+    // spread evenly (e.g. only ascenders, like "till"), every band
+    // is about as dense, and the bottom one ends at the baseline.
+    return bands.lastWhere((b) => b.ink >= 0.95 * mostInk).bottom;
+  }
+
+  /// A line y = intercept + slope * x through [points], or null if
+  /// there are fewer than two of them further apart than [minDx].
+  ///
+  /// This is a repeated median: for each point, the median slope to the
+  /// other points, and then the median of those. So one point that's
+  /// off (a word that dips or rises) doesn't tilt the whole line.
+  /// [slopeSpread] is how much the points disagree about the slope.
+  static ({double slope, double intercept, double slopeSpread})? _robustFit(
+    List<({double x, double y})> points, {
+    required double minDx,
+  }) {
+    final slopes = <double>[];
+    for (int i = 0; i < points.length; i++) {
+      final toOthers = <double>[];
+      for (int j = 0; j < points.length; j++) {
+        final dx = points[j].x - points[i].x;
+        if (dx.abs() < minDx) continue; // too close to tell
+        toOthers.add((points[j].y - points[i].y) / dx);
+      }
+      if (toOthers.isNotEmpty) slopes.add(_midMedian(toOthers));
+    }
+    if (slopes.isEmpty) return null;
+    final slope = _midMedian(slopes);
+    final intercept = _midMedian([for (final p in points) p.y - slope * p.x]);
+    final slopeSpread = _midMedian([for (final s in slopes) (s - slope).abs()]);
+    return (slope: slope, intercept: intercept, slopeSpread: slopeSpread);
   }
 
   /// The [fraction] quantile of the y coordinates of [points],
@@ -169,36 +258,123 @@ abstract final class HandwritingStraightener {
     }
     return sorted.last.y;
   }
+
+  /// The median of [values], halfway between the middle two
+  /// if there's an even number of them.
+  static double _midMedian(List<double> values) {
+    values.sort();
+    final n = values.length;
+    return n.isOdd ? values[n ~/ 2] : (values[n ~/ 2 - 1] + values[n ~/ 2]) / 2;
+  }
+
+  /// The weighted median of [values].
+  static double _weightedMedian(List<({double value, double weight})> values) {
+    final sorted = values.sorted((a, b) => a.value.compareTo(b.value));
+    final total = sorted.fold(0.0, (sum, v) => sum + v.weight);
+    var cumulative = 0.0;
+    for (final v in sorted) {
+      cumulative += v.weight;
+      if (cumulative >= total / 2) return v.value;
+    }
+    return sorted.last.value;
+  }
 }
 
-class _LineGroup {
-  new(Stroke stroke, Rect bounds)
-    : strokes = [stroke],
-      bounds = bounds,
-      _recentCenters = [bounds.center.dy];
+/// A stroke's bounds and ink, for [HandwritingStraightener.groupLines].
+class _StrokeInfo {
+  new(this.stroke)
+    : bounds = stroke.lowQualityPath.getBounds(),
+      points = _StrokeTransform._weightedPoints(stroke.centerline);
 
-  final List<Stroke> strokes;
+  final Stroke stroke;
+  final Rect bounds;
+  final List<_WeightedPoint> points;
+}
+
+/// Strokes that are close together, for [HandwritingStraightener.groupLines].
+class _WordGroup {
+  new(_StrokeInfo stroke) : strokes = [stroke], bounds = stroke.bounds;
+
+  final List<_StrokeInfo> strokes;
   Rect bounds;
-  final List<double> _recentCenters;
 
+  List<_WeightedPoint> get points => [
+    for (final stroke in strokes) ...stroke.points,
+  ];
+
+  void add(_StrokeInfo stroke) {
+    strokes.add(stroke);
+    bounds = bounds.expandToInclude(stroke.bounds);
+  }
+}
+
+/// Words whose baselines line up, for [HandwritingStraightener.groupLines].
+class _LineGroup {
+  new(_WordGroup word, double x, double baseline)
+    : words = [word],
+      bounds = word.bounds,
+      _points = [(x: x, y: baseline)];
+
+  final List<_WordGroup> words;
+  Rect bounds;
+
+  /// The center and baseline of each word (not dots).
+  final List<({double x, double y})> _points;
+
+  double get left => bounds.left;
   double get right => bounds.right;
 
-  /// The vertical center of the last few strokes.
-  double get tailCenter => _recentCenters.average;
+  void add(_WordGroup word, double x, double baseline) {
+    words.add(word);
+    bounds = bounds.expandToInclude(word.bounds);
+    _points.add((x: x, y: baseline));
+  }
 
-  void add(Stroke stroke, Rect strokeBounds) {
-    strokes.add(stroke);
-    bounds = bounds.expandToInclude(strokeBounds);
-    _recentCenters.add(strokeBounds.center.dy);
-    if (_recentCenters.length > 3) _recentCenters.removeAt(0);
+  /// Where the line's baseline is expected to be at [x], and how far
+  /// from there a word's baseline can be and still be in this line.
+  ({double expected, double tolerance}) expectAt(double x, double height) {
+    final band = HandwritingStraightener.lineBand * height;
+    switch (_points) {
+      case [final only]:
+        // the line could slope either way
+        final dx = (x - only.x).abs();
+        return (
+          expected: only.y,
+          tolerance: band + tan(HandwritingStraightener.maxSlope) * dx,
+        );
+      case [final first, final last]:
+        // Two words only roughly give the slope, since one of them
+        // may just bob up or down, so allow for that much.
+        final dx = last.x - first.x;
+        final slope = dx.abs() < 1 ? 0.0 : (last.y - first.y) / dx;
+        final bob = (last.y - first.y).abs();
+        return (
+          expected: last.y + slope * (x - last.x),
+          tolerance: band + bob * max(1, (x - last.x).abs() / max(1, dx)),
+        );
+      default:
+        final fit = HandwritingStraightener._robustFit(_points, minDx: height);
+        if (fit == null) {
+          return (expected: _points.last.y, tolerance: band);
+        }
+        final spread = HandwritingStraightener._midMedian([
+          for (final p in _points)
+            (p.y - fit.intercept - fit.slope * p.x).abs(),
+        ]);
+        // the further from the words, the more an uncertain slope matters
+        final meanX = _points.map((p) => p.x).average;
+        return (
+          expected: fit.intercept + fit.slope * x,
+          tolerance: band + 1.5 * spread + fit.slopeSpread * (x - meanX).abs(),
+        );
+    }
   }
 }
 
 typedef _WeightedPoint = ({double x, double y, double weight});
 
 /// A stroke and the transform that will be applied to it:
-/// rotated by [rotation] around [pivot], then scaled by [scale]
-/// around [anchor], then shifted by [offset].
+/// rotated by [rotation] around [pivot], then shifted by [offset].
 class _StrokeTransform {
   new(this.stroke) : points = _weightedPoints(stroke.centerline);
 
@@ -209,46 +385,39 @@ class _StrokeTransform {
 
   var pivot = Offset.zero;
   var rotation = 0.0;
-  var anchor = Offset.zero;
-  var scale = 1.0;
   var offset = Offset.zero;
 
   double get left => points.map((p) => p.x).min;
   double get right => points.map((p) => p.x).max;
 
-  bool get isIdentity => rotation == 0 && scale == 1 && offset == Offset.zero;
+  bool get isIdentity => rotation == 0 && offset == Offset.zero;
 
   Stroke apply() {
     if (isIdentity) return stroke;
-    // transformed() rotates and scales around the same pivot,
-    // so make up for scaling around [anchor] instead with a shift.
-    return stroke.transformed(pivot: pivot, scale: scale, rotation: rotation)
-      ..shift((anchor - pivot) * (1 - scale) + offset);
+    return stroke.transformed(pivot: pivot, rotation: rotation)..shift(offset);
   }
 
+  /// Rotates by [rotation] around [pivot], on top of any earlier
+  /// rotation and shift.
   void rotate(Offset pivot, double rotation) {
-    this.pivot = pivot;
-    this.rotation = rotation;
     final c = cos(rotation), s = sin(rotation);
+    Offset rotated(Offset v) =>
+        Offset(v.dx * c - v.dy * s, v.dx * s + v.dy * c);
+    if (isIdentity) {
+      this.pivot = pivot;
+    } else {
+      // Rotating around a new pivot after the earlier transform is the
+      // same as rotating further around the old pivot, then shifting.
+      final d = pivot - this.pivot;
+      offset = rotated(offset) + d - rotated(d);
+    }
+    this.rotation += rotation;
     points = [
       for (final p in points)
         (
           x: pivot.dx + (p.x - pivot.dx) * c - (p.y - pivot.dy) * s,
           y: pivot.dy + (p.x - pivot.dx) * s + (p.y - pivot.dy) * c,
           weight: p.weight,
-        ),
-    ];
-  }
-
-  void resize(Offset anchor, double scale) {
-    this.anchor = anchor;
-    this.scale = scale;
-    points = [
-      for (final p in points)
-        (
-          x: anchor.dx + (p.x - anchor.dx) * scale,
-          y: anchor.dy + (p.y - anchor.dy) * scale,
-          weight: p.weight * scale,
         ),
     ];
   }
@@ -295,37 +464,21 @@ class _Word {
   double get left => strokes.map((s) => s.left).min;
   double get right => strokes.map((s) => s.right).max;
 
-  /// The vertical middle of the word, ignoring ascenders and descenders.
-  double get centerY =>
-      HandwritingStraightener._quantileY(_points.toList(), 0.5);
+  /// How much ink is in the word.
+  double get weight => _points.fold(0.0, (sum, p) => sum + p.weight);
 
-  /// The height of the main part of the word,
-  /// ignoring ascenders and descenders.
-  double get bodyHeight {
-    final points = _points.toList();
-    return HandwritingStraightener._quantileY(points, 0.8) -
-        HandwritingStraightener._quantileY(points, 0.2);
-  }
+  /// Where the word sits on the line, see
+  /// [HandwritingStraightener._baselineOf].
+  double baselineFor(double height) =>
+      HandwritingStraightener._baselineOf(_points.toList(), height);
 
-  /// Whether this is a real word that can be resized,
-  /// not e.g. a dot or a dash whose height says nothing about its size.
-  bool canResizeIn(_Line line) {
-    final height = bodyHeight;
-    return height > 0 && right - left >= height && !isDotIn(line);
-  }
-
-  /// Whether this is just a dot, e.g. a period, which should stay
-  /// where it is instead of being moved to the line's center line.
+  /// Whether this is just a dot, dash or accent, e.g. a period,
+  /// which is too small to have a baseline of its own
+  /// and so follows the word before it.
   bool isDotIn(_Line line) {
     final ys = _points.map((p) => p.y);
-    final size = max(right - left, ys.max - ys.min);
-    return size < 0.5 * line.bodyHeight;
-  }
-
-  void resize(Offset anchor, double scale) {
-    for (final stroke in strokes) {
-      stroke.resize(anchor, scale);
-    }
+    return ys.max - ys.min <
+        HandwritingStraightener.dotHeight * line.bodyHeight;
   }
 
   void move(Offset delta) {
@@ -344,28 +497,61 @@ class _Line {
 
   Iterable<_WeightedPoint> get _points => strokes.expand((s) => s.points);
 
+  /// The height of the main part of the line, between the
+  /// 20% and 80% quantiles of its ink, so ignoring most ascenders
+  /// and descenders.
   double get bodyHeight {
     final points = _points.toList();
     return HandwritingStraightener._quantileY(points, 0.8) -
         HandwritingStraightener._quantileY(points, 0.2);
   }
 
-  /// The gaps between the words in this line.
-  Iterable<double> get gaps sync* {
-    for (int i = 1; i < words.length; i++) {
-      yield words[i].left - words[i - 1].right;
-    }
-  }
-
   /// Rotates the line to be horizontal, around its left end.
+  ///
+  /// The slope is that of the words' baselines (see [_Word.baselineFor]),
+  /// so it isn't swayed by which words have ascenders or descenders.
+  /// It's leveled twice, since the baselines are found more accurately
+  /// once the line is roughly level.
   void level() {
-    final points = _points.toList();
     final left = strokes.map((s) => s.left).min;
     final right = strokes.map((s) => s.right).max;
     // short lines don't have a reliable slope
     if (right - left < 3 * bodyHeight) return;
 
-    // weighted least squares fit of y = a + b * x
+    for (var pass = 0; pass < 2; pass++) {
+      final fit = _baselineFit() ?? _inkFit();
+      if (fit == null) return;
+      final slope = atan(fit.slope);
+      // lines that slope a lot are probably meant to be diagonal
+      if (pass == 0 && slope.abs() > HandwritingStraightener.maxSlope) return;
+      if (slope.abs() < HandwritingStraightener.minSlope) return;
+
+      final pivot = Offset(left, fit.intercept + fit.slope * left);
+      for (final stroke in strokes) {
+        stroke.rotate(pivot, -slope);
+      }
+      words = _findWords();
+    }
+  }
+
+  /// A line y = intercept + slope * x through the words' baselines,
+  /// or null if there are fewer than two words.
+  ({double slope, double intercept})? _baselineFit() {
+    final height = bodyHeight;
+    if (height <= 0) return null;
+    final fit = HandwritingStraightener._robustFit([
+      for (final word in words)
+        if (!word.isDotIn(this))
+          (x: (word.left + word.right) / 2, y: word.baselineFor(height)),
+    ], minDx: height);
+    if (fit == null) return null;
+    return (slope: fit.slope, intercept: fit.intercept);
+  }
+
+  /// A weighted least squares fit of y = intercept + slope * x
+  /// through all the ink, for lines of a single word.
+  ({double slope, double intercept})? _inkFit() {
+    final points = _points.toList();
     var sumW = 0.0, sumX = 0.0, sumY = 0.0;
     for (final p in points) {
       sumW += p.weight;
@@ -378,18 +564,9 @@ class _Line {
       covXY += p.weight * (p.x - meanX) * (p.y - meanY);
       varX += p.weight * (p.x - meanX) * (p.x - meanX);
     }
-    if (varX == 0) return;
-    final slope = atan(covXY / varX);
-    if (slope.abs() < HandwritingStraightener.minSlope ||
-        slope.abs() > HandwritingStraightener.maxSlope) {
-      return;
-    }
-
-    final pivot = Offset(left, meanY + (left - meanX) * covXY / varX);
-    for (final stroke in strokes) {
-      stroke.rotate(pivot, -slope);
-    }
-    words = _findWords();
+    if (varX == 0) return null;
+    final slope = covXY / varX;
+    return (slope: slope, intercept: meanY - slope * meanX);
   }
 
   List<_Word> _findWords() {
@@ -407,47 +584,33 @@ class _Line {
     return words;
   }
 
-  /// Resizes words towards [targetHeight], about their left middle.
-  void resizeWords(double targetHeight) {
-    for (final word in words) {
-      if (!word.canResizeIn(this)) continue;
-      // only go halfway, so words keep some of their character
-      final scale = sqrt(targetHeight / word.bodyHeight).clamp(
-        1 / HandwritingStraightener.maxResize,
-        HandwritingStraightener.maxResize,
-      );
-      if ((scale - 1).abs() < 0.05) continue;
-      word.resize(Offset(word.left, word.centerY), scale);
-    }
-  }
-
-  /// Moves the words onto the line's center line.
+  /// Moves the words up or down onto the line's baseline,
+  /// which is where most of them already are.
   void alignWords() {
-    final toAlign = [
+    final height = bodyHeight;
+    if (height <= 0) return;
+    final baselines = <_Word, double>{
       for (final word in words)
-        if (!word.isDotIn(this)) word,
-    ];
-    if (toAlign.isEmpty) return;
-    final centers = [for (final word in toAlign) word.centerY]..sort();
-    final center = centers[centers.length ~/ 2];
-    for (final word in toAlign) {
-      final dy = center - word.centerY;
-      if (dy != 0) word.move(Offset(0, dy));
-    }
-  }
+        if (!word.isDotIn(this)) word: word.baselineFor(height),
+    };
+    if (baselines.isEmpty) return;
+    final baseline = HandwritingStraightener._weightedMedian([
+      for (final MapEntry(key: word, value: y) in baselines.entries)
+        (value: y, weight: word.weight),
+    ]);
 
-  /// Evens out the gaps between words, keeping the first word in place.
-  void spaceWords(double targetGap) {
-    for (int i = 1; i < words.length; i++) {
-      final gap = words[i].left - words[i - 1].right;
-      final newGap = gap > HandwritingStraightener.maxGapToEven * targetGap
-          ? gap
-          : targetGap;
-      final dx = newGap - gap;
-      if (dx == 0) continue;
-      // move this word and the rest of the line along with it
-      for (final word in words.skip(i)) {
-        word.move(Offset(dx, 0));
+    var lastMove = 0.0;
+    for (final word in words) {
+      final double dy;
+      if (baselines[word] case final y?) {
+        dy = baseline - y;
+        lastMove = dy;
+      } else {
+        // a dot, e.g. a period: stays with the word before it
+        dy = lastMove;
+      }
+      if (dy.abs() >= HandwritingStraightener.minMove) {
+        word.move(Offset(0, dy));
       }
     }
   }
